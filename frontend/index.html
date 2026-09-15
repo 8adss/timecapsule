@@ -3,11 +3,52 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#faf6f1" />
-    <title>TimeCapsule · 与过去的你对话</title>
+
+    <!--
+      title 与 description 在这里写一份「静态的首屏版本」。
+      路由的 afterEach 会在应用启动后按 meta.title 覆盖它（见 router/index.js），
+      但两者都需要：静态这份是给爬虫和在 JS 执行前的那一瞬间看的，
+      动态那份负责应用内切换页面时更新标签。
+    -->
+    <title>TimeCapsule · 写给未来的自己</title>
+    <meta
+      name="description"
+      content="把此刻的决心封成一枚时间胶囊，定在未来某一天开启。本地优先的任务与自律记事本，无需注册，数据只存在你自己的浏览器里。"
+    />
+
+    <!-- 应用是浅色主题，声明一下可以避免浏览器把表单控件渲染成深色 -->
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#faf7f3" />
+
+    <!-- 分享链接时的预览信息 -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="TimeCapsule · 写给未来的自己" />
+    <meta
+      property="og:description"
+      content="把此刻的决心封成一枚时间胶囊，定在未来某一天开启。本地优先，无需注册，数据只存在你的浏览器里。"
+    />
+
+    <!--
+      内联 SVG 图标。不额外放一个 .ico 文件有两个好处：
+      一是省一次请求，二是浏览器不会再去请求 /favicon.ico 然后拿到 404——
+      后者会在控制台留下一条噪音，看起来像是站点坏了。
+    -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23b98a5e'/%3E%3Ctext x='16' y='22' font-family='Georgia,serif' font-size='15' font-weight='700' fill='%23fff' text-anchor='middle'%3ETC%3C/text%3E%3C/svg%3E"
+    />
   </head>
   <body>
     <div id="app"></div>
+    <noscript>
+      <div style="max-width: 560px; margin: 80px auto; padding: 0 24px; font-family: system-ui, sans-serif; line-height: 1.7; color: #3f3227">
+        <h1 style="font-size: 20px">需要启用 JavaScript</h1>
+        <p style="color: #6b5a49">
+          TimeCapsule 是一个完全在浏览器里运行的本地应用——数据的读写、统计的计算
+          都在你的设备上完成，因此必须启用 JavaScript 才能使用。
+        </p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

@@ -95,7 +95,7 @@
 
 <script setup>
 import { onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+// ElMessage 由 unplugin-auto-import 自动引入，见 vite.config.js
 import { listAchievements } from '../api/achievement'
 import { listOpenedCapsules } from '../api/capsule'
 import { listTasks } from '../api/task'

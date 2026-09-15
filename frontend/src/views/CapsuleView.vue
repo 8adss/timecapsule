@@ -85,7 +85,7 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+// ElMessage / ElMessageBox 由 unplugin-auto-import 自动引入，见 vite.config.js
 import { createCapsule, listCapsules, openCapsule } from '../api/capsule'
 import { listTasks } from '../api/task'
 import { countdown, daysFromNow, formatDateTime, toDateTimeString } from '../utils/date'

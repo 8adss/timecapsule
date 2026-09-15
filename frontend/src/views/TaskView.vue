@@ -122,7 +122,7 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+// ElMessage 由 unplugin-auto-import 自动引入，见 vite.config.js
 import {
   abandonTask,
   completeTask,

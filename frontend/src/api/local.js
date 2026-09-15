@@ -8,7 +8,7 @@
  * 所以把它放在这一层：**仓储层只抛错、不碰 UI**（可在 Node 里单测），
  * **页面保持原样**，由本函数作为两者之间唯一弹提示的地方。
  */
-import { ElMessage } from 'element-plus'
+// ElMessage 由 unplugin-auto-import 自动引入，见 vite.config.js
 
 /**
  * 执行一次本地操作，失败时弹出提示并把错误继续抛给调用方。

@@ -124,7 +124,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+// ElMessage / ElMessageBox 由 unplugin-auto-import 自动引入，见 vite.config.js
 import {
   exportBackup,
   getSnapshot,
