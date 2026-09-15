@@ -1,0 +1,86 @@
+server:
+  # 后端端口。前端 dev server 跑在 4113，通过 Vite 代理把 /api 转发到这里
+  port: 4114
+
+# ===== 跨域 =====
+# 只放行本机页面（任意本地端口）。这里用「通配端口」而不是写死端口，
+# 是为了以后改前端端口时不用回来动配置；它仍然把公网站点挡在外面。
+app:
+  cors:
+    allowed-origin-patterns: http://localhost:*,http://127.0.0.1:*
+  # ===== 文件上传 =====
+  # 头像这类用户上传的图片存本地磁盘，再通过静态资源映射对外提供访问。
+  # 存盘目录相对「后端的工作目录」：IDEA 里 Run 时工作目录是 backend/，
+  # 所以文件落在 backend/uploads/ 下（已在 .gitignore 中排除，不会提交）。
+  upload:
+    dir: ./uploads
+    url-prefix: /uploads
+    avatar-sub-dir: avatars
+    # 单张头像大小上限（KB）
+    max-avatar-size-kb: 5120
+
+spring:
+  application:
+    name: timecapsule-backend
+  # 默认激活 local profile，它指向 application-local.yml（已被 .gitignore 排除）
+  # 里面放着大模型 API Key 等本机专属配置。文件不存在时 Spring Boot 会忽略，不会报错。
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  servlet:
+    multipart:
+      # Spring Boot 默认单文件上限只有 1MB，不放开的话手机拍的照片直接传不上去
+      max-file-size: 5MB
+      max-request-size: 6MB
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # 数据库连接：默认连本机 timecapsule 库。
+    # 账号密码可用环境变量覆盖，例如 set DB_PASSWORD=你的密码
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:timecapsule}?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+  # 统一日期时间格式：LocalDateTime 一律按 yyyy-MM-dd HH:mm:ss 收发。
+  # 这样前端传上来的本地时间不会被当成 UTC（否则会出现 8 小时偏移）。
+  jackson:
+    time-zone: Asia/Shanghai
+    serialization:
+      write-dates-as-timestamps: false
+
+mybatis-plus:
+  configuration:
+    # 下划线字段自动映射为驼峰属性（openid 这类全小写字段不受影响）
+    map-underscore-to-camel-case: true
+    # 用 Slf4j 输出 SQL，方便用日志级别控制，不再直接打到 stdout
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+      # 逻辑删除：tasks / time_capsules 表有 deleted 列，删除只置 1 不物理删除
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# ===== AI 大模型配置（OpenAI 兼容接口）=====
+# 这里的值只作为「默认值」：启动后可在前端「设置 → AI 模型配置」页面里修改，
+# 改完会存进数据库 ai_config 表，且优先级高于本文件（见 AiConfigService）。
+# 一处都没配 key 时，对话功能返回兜底文案，不会发网络请求，其余功能不受影响。
+ai:
+  base-url: ${AI_BASE_URL:https://ark.cn-beijing.volces.com/api/v3/chat/completions}
+  api-key: ${AI_API_KEY:}
+  model: ${AI_MODEL:doubao-seed-1-6-250615}
+  # 采样温度：越低越稳定，越高越发散
+  temperature: 0.7
+  # 超时设置：AI 服务卡住时不能把 Tomcat 线程占死
+  connect-timeout-ms: 5000
+  read-timeout-ms: 60000
+  # 注入到提示词的最近对话条数（多轮记忆）
+  history-limit: 10
+  # 知识库问答时最多注入的片段数
+  knowledge-limit: 6
+
+logging:
+  level:
+    root: info
+    com.timecapsule: info
+    # 需要看 SQL 时把下面这行打开
+    com.timecapsule.mapper: info

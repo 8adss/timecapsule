@@ -1,0 +1,474 @@
+/* ============================================================
+ * TimeCapsule 主题：浅奶茶黄棕 · 简约大气
+ *
+ * 结构：
+ *   1. 色板（应用变量）
+ *   2. Element Plus 变量覆盖（含完整派生色阶）
+ *   3. 设计令牌（间距 / 字号 / 圆角 / 阴影 / 动效）
+ *   4. 全局基础样式
+ *   5. 页面骨架（.page / .page-head / .panel ...）——各页面复用，避免重复定义
+ *   6. 组件精修
+ *
+ * 必须在 element-plus/dist/index.css 之后引入（见 main.js）。
+ *
+ * 设计取向：装饰做减法，排版做加法。
+ *   - 无渐变、无投影堆叠、无 emoji 装饰
+ *   - 1px 发丝描边 + 克制的圆角
+ *   - 留白优先，内容区限宽居中
+ * ============================================================ */
+
+/* ============================================================
+ * 1 + 2. 色板与 Element Plus 覆盖
+ * ============================================================ */
+:root {
+  /* ---------- 应用色板：浅奶茶黄棕 ---------- */
+  --mt-bg:           #faf7f3;  /* 页面底色 */
+  --mt-bg-soft:      #f5ece1;
+  --mt-surface:      #ffffff;  /* 卡片 / 面板 */
+  --mt-surface-alt:  #f8f2ea;  /* 面板内浅色块 */
+  --mt-border:       #e8dccd;  /* 常规描边 */
+  --mt-border-soft:  #f0e7db;  /* 更浅的分隔线 */
+
+  --mt-primary:      #b98a5e;
+  --mt-primary-deep: #8f6a45;
+  --mt-primary-soft: #f0e7dc;
+  --mt-primary-wash: #f8f4ee;
+
+  --mt-text:         #3f3227;  /* 主文字：暖深棕，比之前更深，标题更压得住 */
+  --mt-text-sub:     #6b5a49;
+  --mt-text-muted:   #97866f;
+  --mt-text-faint:   #b8a894;
+
+  --mt-success:      #8fa97e;
+  --mt-warning:      #d9a05b;
+  --mt-danger:       #c97c6a;
+  --mt-info:         #a99a8b;
+
+  /* ---------- Element Plus 主色阶（按官方规则与白色混合算出） ---------- */
+  --el-color-primary:          #b98a5e;
+  --el-color-primary-light-3:  #cead8e;
+  --el-color-primary-light-5:  #dcc4ae;
+  --el-color-primary-light-7:  #eadccf;
+  --el-color-primary-light-8:  #f1e8df;
+  --el-color-primary-light-9:  #f8f3ef;
+  --el-color-primary-dark-2:   #946e4b;
+
+  --el-color-success:          #8fa97e;
+  --el-color-success-light-3:  #b1c3a5;
+  --el-color-success-light-5:  #c7d4be;
+  --el-color-success-light-7:  #dde5d8;
+  --el-color-success-light-8:  #e9eee5;
+  --el-color-success-light-9:  #f4f6f2;
+  --el-color-success-dark-2:   #728765;
+
+  --el-color-warning:          #d9a05b;
+  --el-color-warning-light-3:  #e4bc8c;
+  --el-color-warning-light-5:  #ecd0ad;
+  --el-color-warning-light-7:  #f4e2ce;
+  --el-color-warning-light-8:  #f7ecde;
+  --el-color-warning-light-9:  #fbf6ef;
+  --el-color-warning-dark-2:   #ae8049;
+
+  --el-color-danger:           #c97c6a;
+  --el-color-danger-light-3:   #d9a397;
+  --el-color-danger-light-5:   #e4beb4;
+  --el-color-danger-light-7:   #efd8d2;
+  --el-color-danger-light-8:   #f4e5e1;
+  --el-color-danger-light-9:   #faf2f0;
+  --el-color-danger-dark-2:    #a16355;
+
+  --el-color-info:             #a99a8b;
+  --el-color-info-light-3:     #c3b8ae;
+  --el-color-info-light-5:     #d4ccc5;
+  --el-color-info-light-7:     #e5e1dc;
+  --el-color-info-light-8:     #eeebe8;
+  --el-color-info-light-9:     #f6f5f3;
+  --el-color-info-dark-2:      #877b6f;
+
+  /* ---------- 文字 / 边框 / 填充 ---------- */
+  --el-text-color-primary:       #3f3227;
+  --el-text-color-regular:       #6b5a49;
+  --el-text-color-secondary:     #97866f;
+  --el-text-color-placeholder:   #b8a894;
+  --el-text-color-disabled:      #cec1b3;
+
+  --el-border-color:             #e8dccd;
+  --el-border-color-light:       #f0e7db;
+  --el-border-color-lighter:     #f5efe6;
+  --el-border-color-extra-light: #faf6f0;
+  --el-border-color-hover:       #d3b995;
+
+  --el-fill-color:               #f5ece1;
+  --el-fill-color-light:         #f8f2ea;
+  --el-fill-color-lighter:       #fbf7f1;
+  --el-fill-color-blank:         #ffffff;
+
+  --el-bg-color:                 #ffffff;
+  --el-bg-color-page:            #faf7f3;
+  --el-bg-color-overlay:         #ffffff;
+
+  --el-table-header-bg-color:    #faf6f0;
+  --el-table-header-text-color:  #6b5a49;
+  --el-table-row-hover-bg-color: #fbf7f1;
+  --el-table-border-color:       #f2ebe1;
+  --el-menu-active-color:        #8f6a45;
+  --el-menu-hover-bg-color:      #f8f4ee;
+  --el-card-border-color:        #f0e7db;
+}
+
+/* ============================================================
+ * 3. 设计令牌
+ * ============================================================ */
+:root {
+  /* 间距（8px 栅格） */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+
+  /* 字号与行高 */
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-base: 14px;
+  --fs-lg: 16px;
+  --fs-title: 22px;
+  --lh-tight: 1.35;
+  --lh-base: 1.65;
+  --lh-loose: 1.85;
+
+  /* 圆角：比"柔"更利落 */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+
+  /* 阴影：整站只用两档，且都极淡 */
+  --shadow-hairline: 0 1px 2px rgba(110, 84, 56, 0.04);
+  --shadow-overlay: 0 8px 28px rgba(110, 84, 56, 0.1);
+
+  /* 动效 */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur: 0.18s;
+
+  /* 布局 */
+  --sidebar-w: 236px;
+  --content-max: 1160px;
+
+  /* Element Plus 圆角/阴影对齐令牌 */
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
+  --el-border-radius-round: 20px;
+  --el-box-shadow-light: var(--shadow-hairline);
+}
+
+/* ============================================================
+ * 4. 全局基础样式
+ * ============================================================ */
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--mt-bg);
+  color: var(--mt-text);
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei",
+    "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 标题统一收紧字距、加深颜色，层级才立得住 */
+h1,
+h2,
+h3,
+h4 {
+  color: var(--mt-text);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+  letter-spacing: 0.2px;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #e2d5c4;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #d0bda4;
+}
+
+/* ============================================================
+ * 5. 页面骨架（各页面直接复用这些 class，不再各写一份）
+ * ============================================================ */
+.page {
+  max-width: var(--content-max);
+  margin: 0 auto;
+}
+
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--sp-5);
+  margin-bottom: var(--sp-5);
+}
+
+.page-title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--mt-text);
+}
+
+.page-desc {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--mt-text-muted);
+  line-height: var(--lh-base);
+}
+
+.page-actions {
+  display: flex;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+}
+
+.section-label {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--mt-text-muted);
+  letter-spacing: 0.4px;
+  margin-bottom: var(--sp-2);
+}
+
+.form-hint {
+  font-size: var(--fs-xs);
+  color: var(--mt-text-faint);
+  line-height: var(--lh-base);
+  margin-top: var(--sp-1);
+}
+
+.muted {
+  color: var(--mt-text-muted);
+}
+
+/* 数据格子：多处复用（我的页、分身页） */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--sp-3);
+}
+
+.stat-cell {
+  padding: var(--sp-4) var(--sp-3);
+  border: 1px solid var(--mt-border-soft);
+  border-radius: var(--radius);
+  background: var(--mt-surface-alt);
+  text-align: center;
+}
+
+.stat-cell .value {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--mt-primary-deep);
+  line-height: 1.2;
+}
+
+.stat-cell .label {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--mt-text-muted);
+}
+
+/* ============================================================
+ * 6. 组件精修：统一圆角、发丝描边、去掉默认冷色
+ * ============================================================ */
+
+/* ---- 卡片：默认只有描边，没有投影 ---- */
+.el-card {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--mt-border-soft);
+  background-color: var(--mt-surface);
+  box-shadow: none !important;
+}
+
+.el-card.is-never-shadow {
+  box-shadow: none !important;
+}
+
+.el-card__header {
+  border-bottom: 1px solid var(--mt-border-soft);
+  padding: var(--sp-4) var(--sp-5);
+}
+
+.el-card__body {
+  padding: var(--sp-5);
+}
+
+/* ---- 表格：去掉竖线，表头淡底，行高放开 ---- */
+.el-table {
+  --el-table-border-color: var(--mt-border-soft);
+  --el-table-row-hover-bg-color: #fbf7f1;
+  background-color: transparent;
+  font-size: var(--fs-base);
+}
+
+.el-table th.el-table__cell {
+  background-color: #faf6f0 !important;
+  color: var(--mt-text-sub);
+  font-weight: 500;
+  font-size: var(--fs-sm);
+  letter-spacing: 0.2px;
+}
+
+.el-table td.el-table__cell,
+.el-table th.el-table__cell {
+  padding: 13px 0;
+  border-bottom: 1px solid var(--mt-border-soft);
+}
+
+.el-table--border::after,
+.el-table--group::after,
+.el-table::before {
+  display: none;
+}
+
+.el-table tr,
+.el-table td.el-table__cell {
+  background-color: transparent;
+}
+
+/* ---- 按钮：字重和高度统一 ---- */
+.el-button {
+  border-radius: var(--radius);
+  font-weight: 500;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--mt-primary);
+  --el-button-border-color: var(--mt-primary);
+  --el-button-hover-bg-color: #ad7f55;
+  --el-button-hover-border-color: #ad7f55;
+  --el-button-active-bg-color: var(--mt-primary-deep);
+  --el-button-active-border-color: var(--mt-primary-deep);
+}
+
+.el-button.is-text {
+  color: var(--mt-text-sub);
+}
+
+/* ---- 输入类 ---- */
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper {
+  border-radius: var(--radius);
+  background-color: var(--mt-surface);
+  box-shadow: 0 0 0 1px var(--mt-border) inset;
+}
+
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px var(--mt-primary) inset;
+}
+
+.el-textarea__inner {
+  padding: 10px 12px;
+  line-height: var(--lh-base);
+}
+
+/* ---- 标签 / 弹窗 / 提示 ---- */
+.el-tag {
+  border-radius: var(--radius-sm);
+  font-weight: 400;
+}
+
+.el-dialog {
+  border-radius: var(--radius-lg);
+  background-color: var(--mt-surface);
+  box-shadow: var(--shadow-overlay);
+  padding: 0;
+}
+
+.el-dialog__header {
+  margin-right: 0;
+  padding: var(--sp-5) var(--sp-5) var(--sp-4);
+  border-bottom: 1px solid var(--mt-border-soft);
+}
+
+.el-dialog__title {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--mt-text);
+}
+
+.el-dialog__body {
+  padding: var(--sp-5);
+}
+
+.el-dialog__footer {
+  padding: var(--sp-4) var(--sp-5) var(--sp-5);
+  border-top: 1px solid var(--mt-border-soft);
+}
+
+.el-message {
+  border-radius: var(--radius);
+  border-color: var(--mt-border);
+}
+
+.el-divider {
+  border-color: var(--mt-border-soft);
+}
+
+.el-divider__text {
+  background-color: var(--mt-surface);
+  color: var(--mt-text-muted);
+  font-size: var(--fs-sm);
+  font-weight: 400;
+}
+
+.el-empty__description p {
+  color: var(--mt-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.el-popconfirm__main {
+  padding: var(--sp-3) 0;
+}
+
+/* ---- 侧边导航 ----
+ * 导航已改为自定义的 router-link 布局（线性图标 + 文字 + 可收起），
+ * 用 el-menu 很难做出参考稿的效果，因此相关样式放在 App.vue 的 scoped 块里。 */
+
+/* ---- 表单：标签与控件对齐更整齐 ---- */
+.el-form-item__label {
+  color: var(--mt-text-sub);
+  font-size: var(--fs-base);
+}
+
+.el-form-item {
+  margin-bottom: var(--sp-5);
+}
+
+/* ---- 加载遮罩：用暖色而不是默认蓝白 ---- */
+.el-loading-mask {
+  background-color: rgba(255, 253, 251, 0.72);
+}
+
+.el-loading-spinner .path {
+  stroke: var(--mt-primary);
+}

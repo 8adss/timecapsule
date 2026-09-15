@@ -1,0 +1,23 @@
+{
+  "name": "timecapsule-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "跨时间自我对话式自律记事本 - 前端（Vue3 + Vite + Element Plus）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "axios": "^1.7.2",
+    "element-plus": "^2.7.6",
+    "pinia": "^2.1.7",
+    "vue": "^3.4.29",
+    "vue-router": "^4.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.5",
+    "vite": "^5.3.1"
+  }
+}
