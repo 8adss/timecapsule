@@ -1,83 +1,79 @@
+/**
+ * 本机档案状态。
+ *
+ * 与改造前的区别：**没有登录、没有 openid、没有多账号切换**。
+ * 数据属于这台浏览器，打开即用。
+ *
+ * 之所以仍用 Pinia 而不是让页面各自读仓储：档案的显示值（昵称、头像、等级、
+ * 连续天数）在侧边栏、我的页、任务页都要用到，完成一次任务后需要同时刷新它们。
+ * 集中放一处可以避免每个页面各自重复读取。
+ */
 import { defineStore } from 'pinia'
-import { login, getUser, updateUser } from '../api/user'
+import { getProfile, updateProfile, uploadAvatar } from '../api/user'
 
-const OPENID_KEY = 'timecapsule.openid'
-const USER_ID_KEY = 'timecapsule.userId'
-
-// 数据库脚本里预置的测试账号，有完整虚拟数据（任务/胶囊/对话/成就）
-const DEFAULT_OPENID = 'test-openid-001'
-
-// 用户状态。
-// 关键修复：userId 会持久化到 localStorage，并且在应用启动时（main.js）
-// 先登录拿到 userId 再渲染，否则首屏 /tasks 会带着 userId=null 发请求，
-// 后端必然 400，页面是一片空白。
 export const useUserStore = defineStore('user', {
   state: () => ({
-    userId: Number(localStorage.getItem(USER_ID_KEY)) || null,
-    openid: localStorage.getItem(OPENID_KEY) || DEFAULT_OPENID,
-    nickname: '',
-    avatarUrl: '',
-    streakDays: 0,
-    growthLevel: 1,
+    /** 本机档案，形状与旧后端的 User 一致：{ id, nickname, avatarUrl, streakDays, growthLevel, ... } */
+    profile: null,
+    /** 是否已完成首次读取。页面据此决定要不要显示骨架屏。 */
     ready: false
   }),
 
   getters: {
-    isLoggedIn: (state) => !!state.userId,
-    displayName: (state) => state.nickname || '未登录',
-    avatarText: (state) => (state.nickname || '?').slice(0, 1)
+    nickname: (state) => state.profile?.nickname ?? '',
+    avatarUrl: (state) => state.profile?.avatarUrl ?? '',
+    streakDays: (state) => state.profile?.streakDays ?? 0,
+    growthLevel: (state) => state.profile?.growthLevel ?? 1,
+    displayName: (state) => state.profile?.nickname || '本机用户',
+    /** 没有头像时显示昵称首字 */
+    avatarText: (state) => (state.profile?.nickname || '?').slice(0, 1)
   },
 
   actions: {
-    setUser(user) {
-      if (!user) return
-      this.userId = user.id
-      this.openid = user.openid
-      this.nickname = user.nickname || ''
-      this.avatarUrl = user.avatarUrl || ''
-      this.streakDays = user.streakDays ?? 0
-      this.growthLevel = user.growthLevel ?? 1
-      localStorage.setItem(USER_ID_KEY, String(user.id))
-      localStorage.setItem(OPENID_KEY, user.openid)
-    },
-
-    /** 按当前 openid 登录（不存在会后端自动注册），并同步用户信息 */
-    async ensureLogin() {
-      const user = await login(this.openid || DEFAULT_OPENID)
-      this.setUser(user)
+    /**
+     * 读取本机档案。首次调用会在存储里创建一条默认档案。
+     */
+    async load() {
+      this.profile = await getProfile()
       this.ready = true
-      return user
+      return this.profile
     },
 
-    /** 重新拉一次用户信息（完成/放弃任务后等级与打卡会变） */
+    /**
+     * 重新读取档案。
+     *
+     * 完成任务、开启胶囊都会改变连续打卡与成长等级，调用方需要据此刷新侧边栏。
+     */
     async refresh() {
-      return this.ensureLogin()
+      return this.load()
     },
 
-    /** 修改昵称 / 头像 */
-    async saveProfile({ nickname, avatarUrl }) {
-      const user = await updateUser(this.userId, { userId: this.userId, nickname, avatarUrl })
-      this.setUser(user)
-      return user
+    /**
+     * 直接写入一份档案对象（不再回读），用于接口已经返回了最新值的场景。
+     * @param {object} profile
+     */
+    setProfile(profile) {
+      if (profile) {
+        this.profile = profile
+      }
     },
 
-    /** 切换测试账号（本地演示用） */
-    async switchOpenid(openid) {
-      this.clear()
-      this.openid = openid
-      return this.ensureLogin()
+    /**
+     * 保存昵称与头像。
+     * @param {{ nickname?: string, avatarUrl?: string }} patch
+     */
+    async saveProfile(patch) {
+      this.profile = await updateProfile(patch)
+      return this.profile
     },
 
-    clear() {
-      this.userId = null
-      this.nickname = ''
-      this.avatarUrl = ''
-      this.streakDays = 0
-      this.growthLevel = 1
-      localStorage.removeItem(USER_ID_KEY)
-      localStorage.removeItem(OPENID_KEY)
+    /**
+     * 更换头像。文件会在浏览器里压缩成 dataURL 后存本地。
+     * @param {File} file
+     */
+    async changeAvatar(file) {
+      this.profile = await uploadAvatar(file)
+      return this.profile
     }
   }
 })
-
-export { DEFAULT_OPENID }

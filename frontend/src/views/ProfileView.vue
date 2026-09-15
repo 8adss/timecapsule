@@ -14,7 +14,9 @@
         </div>
         <div class="profile-main">
           <div class="nickname">{{ userStore.displayName }}</div>
-          <div class="openid">openid：{{ userStore.openid }}</div>
+          <div class="storage-note">
+            数据保存在本机浏览器中，不会上传到任何服务器
+          </div>
         </div>
         <el-button @click="editVisible = true">编辑资料</el-button>
       </div>
@@ -41,21 +43,6 @@
       <div class="level-tip">
         每完成 5 个任务升 1 级，当前进度 {{ doneCount % 5 }}/5
         <el-progress :percentage="(doneCount % 5) * 20" :show-text="false" :stroke-width="6" />
-      </div>
-    </el-card>
-
-    <el-card shadow="never" class="switch-card">
-      <div class="switch-row">
-        <span class="switch-label">切换测试账号</span>
-        <el-select v-model="currentOpenid" style="width: 240px" @change="switchAccount">
-          <el-option
-            v-for="account in accounts"
-            :key="account.openid"
-            :label="account.label"
-            :value="account.openid"
-          />
-        </el-select>
-        <span class="switch-tip">数据库脚本预置了 3 个账号，数据各自独立，可用来验证数据隔离</span>
       </div>
     </el-card>
 
@@ -86,11 +73,12 @@
               <el-avatar :size="84" :src="userStore.avatarUrl">
                 {{ userStore.avatarText }}
               </el-avatar>
-              <div class="avatar-edit-mask">{{ uploading ? '上传中…' : '更换头像' }}</div>
+              <div class="avatar-edit-mask">{{ uploading ? '处理中…' : '更换头像' }}</div>
             </div>
           </el-upload>
           <div class="form-hint">
-            支持 JPG / PNG / WebP / GIF，单张不超过 5 MB。选好图片即上传，不需要再点保存。
+            支持 JPG / PNG / WebP / GIF。选好图片即保存，不需要再点按钮。
+            图片会在本机压缩后存入浏览器，不会上传到任何地方。
           </div>
         </el-form-item>
         <el-form-item label="昵称">
@@ -111,17 +99,14 @@ import { ElMessage } from 'element-plus'
 import { listAchievements } from '../api/achievement'
 import { listOpenedCapsules } from '../api/capsule'
 import { listTasks } from '../api/task'
-import { uploadAvatar } from '../api/user'
 import { useUserStore } from '../stores/user'
 import { formatDateTime } from '../utils/date'
+import { ALLOWED_AVATAR_TYPES } from '../utils/image'
 
 const userStore = useUserStore()
 
-const accounts = [
-  { openid: 'test-openid-001', label: '小林（数据最全）' },
-  { openid: 'test-openid-002', label: '阿May' },
-  { openid: 'test-openid-003', label: '老王（刚注册）' }
-]
+/** 源文件大小上限。超过它浏览器压缩会明显卡顿，体验上不如直接拒绝。 */
+const MAX_SOURCE_BYTES = 20 * 1024 * 1024
 
 const achievements = ref([])
 const doneCount = ref(0)
@@ -131,7 +116,6 @@ const saving = ref(false)
 const uploading = ref(false)
 const editVisible = ref(false)
 const nicknameDraft = ref('')
-const currentOpenid = ref(userStore.openid)
 
 const META = {
   任务完成: { icon: '✅', color: '#8fa97e' },
@@ -143,15 +127,14 @@ const meta = (type) => META[type] || { icon: '🏅', color: '#a99a8b' }
 const load = async () => {
   loading.value = true
   try {
-    // 拉一次用户信息，保证等级 / 打卡是最新的
+    // 先刷新档案，保证等级 / 连续打卡是最新的（完成任务的闭环会改动它们）
     await userStore.refresh()
-    currentOpenid.value = userStore.openid
     nicknameDraft.value = userStore.nickname
 
     const [badges, tasks, capsules] = await Promise.all([
-      listAchievements(userStore.userId),
-      listTasks(userStore.userId),
-      listOpenedCapsules(userStore.userId)
+      listAchievements(),
+      listTasks(),
+      listOpenedCapsules()
     ])
     achievements.value = badges
     doneCount.value = tasks.filter((t) => t.status === 1).length
@@ -168,7 +151,10 @@ const saveNickname = async () => {
   }
   saving.value = true
   try {
-    await userStore.saveProfile({ nickname: nicknameDraft.value.trim(), avatarUrl: userStore.avatarUrl })
+    await userStore.saveProfile({
+      nickname: nicknameDraft.value.trim(),
+      avatarUrl: userStore.avatarUrl
+    })
     ElMessage.success('昵称已更新')
     editVisible.value = false
   } catch (e) {
@@ -179,44 +165,34 @@ const saveNickname = async () => {
 }
 
 /**
- * 选图前的本地预检：先挡掉明显不合规的文件，省一次往返。
- * 服务端还会再校验一次（MIME 类型 + 大小），这里只是让反馈更快。
+ * 选图前的本地预检。
+ *
+ * 真正的类型校验与压缩在 `utils/image.js` 里做，这里只是提前挡掉明显不合规的
+ * 文件，省得读进内存再报错。**两处都校验是有意的**：这一层管体验，那一层管安全，
+ * 不能因为这里拦过一次就放松底层。
  */
 const beforeAvatarUpload = (file) => {
-  const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
-  if (!allowed.includes(file.type)) {
+  if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
     ElMessage.error('只支持 JPG / PNG / WebP / GIF 格式的图片')
     return false
   }
-  if (file.size > 5 * 1024 * 1024) {
-    ElMessage.error('图片不能超过 5 MB')
+  if (file.size > MAX_SOURCE_BYTES) {
+    ElMessage.error('图片不能超过 20 MB')
     return false
   }
   return true
 }
 
-/** el-upload 的自定义上传：拿到原始 File 自己发请求，走统一的 request 封装 */
+/** el-upload 的自定义上传：拿到原始 File，交给 store 在本地压缩并落盘 */
 const doUploadAvatar = async ({ file }) => {
   uploading.value = true
   try {
-    const user = await uploadAvatar(userStore.userId, userStore.userId, file)
-    // setUser 会同时更新 localStorage，侧边栏头像也跟着变
-    userStore.setUser(user)
+    await userStore.changeAvatar(file)
     ElMessage.success('头像已更新')
   } catch (e) {
-    /* 错误提示已由 request 拦截器统一弹出 */
+    /* 已提示 */
   } finally {
     uploading.value = false
-  }
-}
-
-const switchAccount = async (openid) => {
-  try {
-    await userStore.switchOpenid(openid)
-    ElMessage.success(`已切换到 ${userStore.displayName}`)
-    await load()
-  } catch (e) {
-    /* 已提示 */
   }
 }
 
@@ -298,7 +274,7 @@ onMounted(load)
   font-weight: 600;
   color: var(--mt-text);
 }
-.openid {
+.storage-note {
   margin-top: 3px;
   font-size: var(--fs-xs);
   color: var(--mt-text-faint);
@@ -309,23 +285,6 @@ onMounted(load)
 .level-tip {
   font-size: 12px;
   color: var(--mt-text-muted);
-}
-.switch-card {
-  margin-bottom: var(--sp-5);
-}
-.switch-row {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  flex-wrap: wrap;
-}
-.switch-label {
-  font-size: var(--fs-base);
-  color: var(--mt-text-sub);
-}
-.switch-tip {
-  font-size: var(--fs-xs);
-  color: var(--mt-text-faint);
 }
 .badge-list {
   display: flex;

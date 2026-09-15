@@ -1,0 +1,29 @@
+# 行尾统一。
+#
+# 不加这个文件时，Windows 上的 core.autocrlf=true 会把仓库里的 LF 在工作区
+# 换成 CRLF，于是每次 checkout 都让 git 认为「所有文件都改了」，
+# 贡献者的 diff 里混满整文件重写，真正的改动反而看不见。
+#
+# 约定：仓库里一律存 LF，工作区也保持 LF（下面的 eol=lf）。
+# 编辑器都支持 LF，没有必要为了 Windows 记事本牺牲 diff 的可读性。
+* text=auto eol=lf
+
+# 例外：这几类脚本由 Windows 原生解释器执行，必须保留 CRLF
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# 二进制文件不做任何行尾转换，否则会被损坏
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
+*.jar   binary
+*.xlsx  binary
+
+# 让 GitHub 语言统计正确识别：把生成物与依赖目录排除在统计之外
+frontend/package-lock.json  linguist-generated
+pnpm-lock.yaml              linguist-generated

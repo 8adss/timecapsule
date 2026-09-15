@@ -1,35 +1,31 @@
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-// 本地开发端口约定：
-//   前端 dev server  4113   ← 浏览器访问这个
-//   后端 Spring Boot 4114   ← 由下面的 proxy 转发过去
-//
-// strictPort：端口被占用时直接报错退出，而不是自动顺延到 4114。
-// 顺延会和后端端口撞上，问题反而更难查。
-const BACKEND_PORT = 4114
-const FRONTEND_PORT = 4113
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+
+// 开发端口。strictPort：端口被占用时直接报错退出，而不是静默顺延到别的端口——
+// 顺延会让人以为服务没起来，问题反而更难查。
+const DEV_PORT = 4113
 
 export default defineConfig({
   plugins: [vue()],
-  server: {
-    port: FRONTEND_PORT,
-    strictPort: true,
-    proxy: {
-      '/api': {
-        target: `http://localhost:${BACKEND_PORT}`,
-        changeOrigin: true
-      },
-      // 用户上传的图片（头像）由后端提供，也必须代理过去，
-      // 否则 <img src="/uploads/avatars/xxx.png"> 会被当成前端路由而 404
-      '/uploads': {
-        target: `http://localhost:${BACKEND_PORT}`,
-        changeOrigin: true
-      }
-    }
+
+  // 应用内（设置页的「关于」）需要显示版本号，从 package.json 注入，避免两处手改
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version)
   },
+
+  server: {
+    port: DEV_PORT,
+    strictPort: true
+    // 这里原本有 /api 与 /uploads 两个转发到后端 4114 的代理。
+    // 本地优先改造之后应用不再访问后端，代理已移除；
+    // 将来若接入外接存储需要走网络，再按那时的端点加回来。
+  },
+
   preview: {
-    port: FRONTEND_PORT,
+    port: DEV_PORT,
     strictPort: true
   }
 })

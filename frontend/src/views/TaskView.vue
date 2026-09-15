@@ -161,7 +161,7 @@ const statusType = (s) => ({ 0: 'primary', 1: 'success', 2: 'danger', 3: 'info' 
 const load = async () => {
   loading.value = true
   try {
-    tasks.value = await listTasks(userStore.userId)
+    tasks.value = await listTasks()
   } finally {
     loading.value = false
   }
@@ -237,7 +237,6 @@ const submit = async () => {
   submitting.value = true
   try {
     const payload = {
-      userId: userStore.userId,
       title: form.title.trim(),
       category: form.category,
       description: form.description,
@@ -249,7 +248,7 @@ const submit = async () => {
       await updateTask(editingId.value, payload)
       ElMessage.success('任务已更新')
     } else {
-      // 任务与胶囊由后端在同一个事务里一起创建，不会出现"有任务没胶囊"
+      // 任务与胶囊由仓储层在同一个 IndexedDB 事务里一起写入，不会出现"有任务没胶囊"
       await createTask({
         ...payload,
         capsuleContent: form.capsuleContent.trim(),
@@ -269,7 +268,7 @@ const submit = async () => {
 
 const doComplete = async (row) => {
   try {
-    await completeTask(row.id, userStore.userId)
+    await completeTask(row.id)
     ElMessage.success('任务已完成，去胶囊页看看过去的你说了什么')
     await load()
     // 完成会改变连续打卡与成长等级，同步刷新左侧用户信息
@@ -281,7 +280,7 @@ const doComplete = async (row) => {
 
 const doAbandon = async (row) => {
   try {
-    await abandonTask(row.id, userStore.userId)
+    await abandonTask(row.id)
     ElMessage.success('任务已标记为放弃')
     await load()
   } catch (e) {
@@ -291,7 +290,7 @@ const doAbandon = async (row) => {
 
 const doDelete = async (row) => {
   try {
-    await deleteTask(row.id, userStore.userId)
+    await deleteTask(row.id)
     ElMessage.success('任务已删除')
     await load()
   } catch (e) {

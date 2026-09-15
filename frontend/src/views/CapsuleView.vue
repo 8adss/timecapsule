@@ -35,7 +35,17 @@
 
       <template #footer>
         <el-button v-if="c.status === 0" type="primary" @click="doOpen(c)">开启胶囊</el-button>
-        <el-button v-else type="primary" plain @click="goChat(c)">继续与过去的你对话</el-button>
+        <!--
+          已开启的胶囊原本还有一个「继续与过去的你对话」按钮，跳转到 /chat。
+
+          该页面依赖后端 AI，第一版已从路由下架，所以按钮一并移除。
+          如果只是把按钮留着、让它跳到未注册的路径，后果比报错更糟：
+          vue-router 对未匹配 location 并**不会中止导航**，matched 为空时
+          <router-view> 什么都不渲染——用户会看到侧边栏还在、内容区整片空白，
+          刷新也恢复不了（另外静态托管下还会因 SPA fallback 缺失直接 404）。
+
+          二期接回 /chat 时，把这个按钮与下面的 goChat 一并恢复即可。
+        -->
       </template>
     </el-card>
 
@@ -75,15 +85,10 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { createCapsule, listCapsules, openCapsule } from '../api/capsule'
 import { listTasks } from '../api/task'
-import { useUserStore } from '../stores/user'
 import { countdown, daysFromNow, formatDateTime, toDateTimeString } from '../utils/date'
-
-const userStore = useUserStore()
-const router = useRouter()
 
 const capsules = ref([])
 const tasks = ref([])
@@ -95,8 +100,8 @@ const form = reactive({ toDate: null, taskId: null, content: '' })
 const load = async () => {
   loading.value = true
   try {
-    capsules.value = await listCapsules(userStore.userId)
-    tasks.value = await listTasks(userStore.userId)
+    capsules.value = await listCapsules()
+    tasks.value = await listTasks()
   } finally {
     loading.value = false
   }
@@ -126,7 +131,6 @@ const doCreate = async () => {
   submitting.value = true
   try {
     await createCapsule({
-      userId: userStore.userId,
       taskId: form.taskId,
       toDate: toDateTimeString(form.toDate),
       content: form.content.trim()
@@ -156,16 +160,12 @@ const doOpen = async (capsule) => {
   }
 
   try {
-    await openCapsule(capsule.id, userStore.userId)
+    await openCapsule(capsule.id)
     ElMessage.success('胶囊已开启，去听听过去的你说了什么')
     await load()
   } catch (e) {
     /* 已提示 */
   }
-}
-
-const goChat = (capsule) => {
-  router.push({ path: '/chat', query: { mode: 'capsule', capsuleId: capsule.id } })
 }
 
 onMounted(load)

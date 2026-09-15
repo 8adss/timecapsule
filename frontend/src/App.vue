@@ -58,12 +58,11 @@ const userStore = useUserStore()
 
 const COLLAPSE_KEY = 'timecapsule.sidebarCollapsed'
 
+// 导航项。第一版只列纯本地功能；知识库 / 我的分身 / 对话三个 AI 页面
+// 已随路由一并下架，二期接回 AI 时在这里加回来即可。
 const navItems = [
   { path: '/tasks', label: '任务', icon: 'task' },
   { path: '/capsules', label: '时间胶囊', icon: 'capsule' },
-  { path: '/knowledge', label: '知识库', icon: 'knowledge' },
-  { path: '/personas', label: '我的分身', icon: 'persona' },
-  { path: '/chat', label: '对话', icon: 'chat' },
   { path: '/profile', label: '我的 / 成就', icon: 'achievement' },
   { path: '/settings', label: '设置', icon: 'settings' }
 ]
