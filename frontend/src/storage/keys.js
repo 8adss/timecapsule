@@ -21,7 +21,14 @@ export const KEY = Object.freeze({
   tasks: `${NS}:tasks`,
   capsules: `${NS}:capsules`,
   achievements: `${NS}:achievements`,
-  settings: `${NS}:settings`
+  settings: `${NS}:settings`,
+  /**
+   * 导入 / 清空前的自动快照，用于一键回滚。
+   *
+   * **刻意不属于「用户数据」**：它是一次破坏性操作前的自救副本，
+   * 不该出现在导出的备份文件里（否则会出现「备份里套着备份」的嵌套膨胀）。
+   */
+  snapshot: `${NS}:snapshot`
 })
 
 /**
@@ -37,4 +44,4 @@ export const DATA_KEYS = Object.freeze([
 ])
 
 /** 本应用会写入的全部键，用于清空与整体导出。 */
-export const ALL_KEYS = Object.freeze([KEY.meta, ...DATA_KEYS])
+export const ALL_KEYS = Object.freeze([KEY.meta, ...DATA_KEYS, KEY.snapshot])

@@ -23,6 +23,26 @@ export { KEY, ALL_KEYS, DATA_KEYS, SCHEMA_VERSION } from './keys'
 /** 当前适配器。惰性创建，测试可通过 setAdapter 替换。 */
 let current = null
 
+/** 当前存储模式与是否持久化，供界面展示（见 detectStorageMode / isPersistent）。 */
+let currentMode = 'indexeddb'
+let currentPersistent = true
+
+/**
+ * 当前存储模式的标识，用于界面展示。
+ * @returns {string} `'indexeddb'` 或 `'memory'`
+ */
+export function detectStorageMode() {
+  return currentMode
+}
+
+/**
+ * 当前存储是否持久化。为 false 时界面**必须**提示用户数据不会被保存。
+ * @returns {boolean}
+ */
+export function isPersistent() {
+  return currentPersistent
+}
+
 /**
  * 替换当前适配器。
  *
@@ -64,10 +84,14 @@ export async function initStorage() {
   try {
     await indexedDb.keys()
     setAdapter(indexedDb)
+    currentMode = indexedDb.name
+    currentPersistent = true
     return { mode: indexedDb.name, persistent: true }
   } catch (error) {
     const memory = createMemoryAdapter()
     setAdapter(memory)
+    currentMode = memory.name
+    currentPersistent = false
     return {
       mode: memory.name,
       persistent: false,
