@@ -269,6 +269,10 @@ export async function clearAllData(now = new Date()) {
       [KEY.knowledge, []],
       [KEY.personas, []]
     ])
+    // 刻意**不写** KEY.meta：它描述的是本地环境状态（schemaVersion、示例内容写过没有），
+    // 不属于用户数据，与 data 的分区定义一致（见 storage/keys.js）。
+    // 一个具体后果：见过示例内容的人清空数据后不会又被塞回一份示例，
+    // 理由见 domain/demo.js 里 buildDemoMeta 的注释。
   })
 }
 

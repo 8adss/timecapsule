@@ -112,14 +112,21 @@ export function buildDoc(input, now = new Date()) {
     key: 'errors.knowledgeContentTooLong'
   })
 
+  // 原文件名只用于「来源」列的展示，超长时**截断而不是报错**：用户没法为此做什么
+  // （总不能让用户去改文件名），为一个展示字段挡住整次导入不划算。
+  // 但也不能原样存——`domain/backup.js` 按同样的上限校验这个字段，
+  // 超限会让**整份备份以后都导不回来**（存得进去、导不回来）。
+  // 多数情况下这个分支根本走不到：标题也来自文件名，而标题超限是直接报错的。
+  const originName = typeof input.originName === 'string' && input.originName.trim() !== ''
+    ? input.originName.trim().slice(0, KNOWLEDGE_LIMITS.title)
+    : null
+
   return {
     id: newId(),
     title,
     content: input.content,
     sourceType: input.sourceType === SOURCE_TYPE.FILE ? SOURCE_TYPE.FILE : SOURCE_TYPE.PASTE,
-    originName: typeof input.originName === 'string' && input.originName.trim() !== ''
-      ? input.originName.trim()
-      : null,
+    originName,
     deleted: 0,
     createdAt: timestamp,
     updatedAt: timestamp

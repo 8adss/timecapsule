@@ -109,6 +109,22 @@ function optionalText(value, max, message, options) {
 }
 
 /**
+ * 校验分身名称：必填，且不超上限。
+ *
+ * 上限这件事必须在这里管，不能只靠表单的 `maxlength`——`buildPersona` /
+ * `applyPersonaPatch` 是这一层的入口，将来接上大模型后会有程序化的写入路径，
+ * 而备份校验器按 `PERSONA_LIMITS.name` 拒收超限的文件：一旦超限值落盘，
+ * 用户导出的备份**再也导不回来**（存得进去、导不回来）。
+ */
+function requireName(value) {
+  const name = requireText(value, '请填写分身名称', { key: 'errors.personaNameRequired' })
+  requireMaxLength(name, PERSONA_LIMITS.name, `分身名称超过 ${PERSONA_LIMITS.name} 字上限`, {
+    key: 'errors.personaNameTooLong'
+  })
+  return name
+}
+
+/**
  * 构造一个新的分身。
  *
  * @param {object} input
@@ -125,7 +141,7 @@ export function buildPersona(input, now = new Date()) {
 
   return {
     id: newId(),
-    name: requireText(input.name, '请填写分身名称', { key: 'errors.personaNameRequired' }),
+    name: requireName(input.name),
     selfDate: requireSelfDate(input.selfDate),
     docIds: requireDocIds(input.docIds),
     summary: optionalText(
@@ -176,8 +192,10 @@ export function applyPersonaPatch(persona, patch, now = new Date()) {
 
     if (field === 'name') {
       const name = patch.name
+      // 空字符串 = 没填，保持原值（与任务名称、文档标题同理）；
+      // 非空则走与新建完全相同的校验，上限也不例外
       if (typeof name === 'string' && name.trim() !== '') {
-        next.name = name.trim()
+        next.name = requireName(name)
       }
       continue
     }

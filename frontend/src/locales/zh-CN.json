@@ -109,6 +109,7 @@
     "knowledgeTitleTooLong": "标题超过 {max} 字上限",
     "knowledgeContentTooLong": "正文超过 {max} 字上限，请拆成几篇再导入",
     "personaNameRequired": "请填写分身名称",
+    "personaNameTooLong": "分身名称超过 {max} 字上限",
     "personaSelfDateRequired": "请选择代表的时间点",
     "personaDocsRequired": "至少要选一篇材料",
     "personaDocsTooMany": "引用的材料不能超过 {max} 篇",

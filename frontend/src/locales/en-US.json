@@ -109,6 +109,7 @@
     "knowledgeTitleTooLong": "The title is over the {max} character limit",
     "knowledgeContentTooLong": "The text is over the {max} character limit — please split it into several documents",
     "personaNameRequired": "Please give the persona a name",
+    "personaNameTooLong": "The persona name is over the {max} character limit",
     "personaSelfDateRequired": "Please pick the point in time this persona represents",
     "personaDocsRequired": "Please choose at least one document",
     "personaDocsTooMany": "A persona can reference at most {max} documents",

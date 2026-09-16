@@ -76,6 +76,14 @@ describe('buildPersona', () => {
     expect(() => persona({ stylePrompt: 'x'.repeat(PERSONA_LIMITS.stylePrompt + 1) })).toThrow('说话风格超过')
   })
 
+  it('名称超长时抛错（同样是「存得进去、备份导不回来」那一类）', () => {
+    // 名称原先漏了这道校验：域层声明了 PERSONA_LIMITS.name 却从没用过它，
+    // 而备份校验器按同一个数字拒收，超限值一旦落盘那份备份就废了
+    expect(() => persona({ name: 'x'.repeat(PERSONA_LIMITS.name + 1) })).toThrow('分身名称超过')
+    expect(persona({ name: 'x'.repeat(PERSONA_LIMITS.name) }).name)
+      .toHaveLength(PERSONA_LIMITS.name)
+  })
+
   it('每个分身拿到不同的 id', () => {
     expect(persona().id).not.toBe(persona().id)
   })
@@ -117,6 +125,11 @@ describe('applyPersonaPatch', () => {
 
   it('材料被清空时报错', () => {
     expect(() => applyPersonaPatch(base, { docIds: [] }, NOW)).toThrow('至少要选一篇材料')
+  })
+
+  it('改名时同样受长度上限约束（不能只在新建那侧拦）', () => {
+    expect(() => applyPersonaPatch(base, { name: 'x'.repeat(PERSONA_LIMITS.name + 1) }, NOW))
+      .toThrow('分身名称超过')
   })
 
   it('画像与说话风格可以被清空', () => {

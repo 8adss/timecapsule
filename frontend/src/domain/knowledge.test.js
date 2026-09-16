@@ -63,6 +63,29 @@ describe('buildDoc', () => {
     expect(doc({ sourceType: 'PDF' }).sourceType).toBe(SOURCE_TYPE.PASTE)
   })
 
+  it('标题或正文超长时抛错（否则存得进去、备份导不回来）', () => {
+    // 界面的 maxlength 挡不住「读文件填进来」那条路径，所以写入侧必须自己拦。
+    // 一旦超限值落盘，导出的备份会被 domain/backup.js 按上限整份拒收。
+    expect(() => doc({ title: 'x'.repeat(KNOWLEDGE_LIMITS.title + 1) })).toThrow('标题超过')
+    expect(() => doc({ content: 'x'.repeat(KNOWLEDGE_LIMITS.content + 1) })).toThrow('正文超过')
+  })
+
+  it('刚好等于上限时不报错（边界不能差一）', () => {
+    expect(doc({ title: 'x'.repeat(KNOWLEDGE_LIMITS.title) }).title)
+      .toHaveLength(KNOWLEDGE_LIMITS.title)
+    expect(doc({ content: 'x'.repeat(KNOWLEDGE_LIMITS.content) }).content)
+      .toHaveLength(KNOWLEDGE_LIMITS.content)
+  })
+
+  it('原文件名超长时被截断，而不是让整次导入失败', () => {
+    // 它只用于「来源」列的展示，用户没法为此做什么（总不能让用户去改文件名）；
+    // 但也不能原样存——备份校验器按同样的上限卡这个字段
+    const long = `${'x'.repeat(250)}.txt`
+    const item = doc({ sourceType: SOURCE_TYPE.FILE, originName: long })
+    expect(item.originName).toHaveLength(KNOWLEDGE_LIMITS.title)
+    expect(item.originName).toBe(long.slice(0, KNOWLEDGE_LIMITS.title))
+  })
+
   it('每条文档拿到不同的 id', () => {
     expect(doc().id).not.toBe(doc().id)
   })
