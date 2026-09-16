@@ -67,7 +67,7 @@
           <h2 class="section-title">{{ t('landing.dataTitle') }}</h2>
           <p class="section-sub">{{ t('landing.dataSub') }}</p>
           <ul class="data-list">
-            <li v-for="n in 4" :key="n">{{ t(`landing.dataPoint${n}`) }}</li>
+            <li v-for="n in 5" :key="n">{{ t(`landing.dataPoint${n}`) }}</li>
           </ul>
         </div>
         <aside class="data-aside">

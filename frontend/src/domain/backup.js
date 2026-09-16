@@ -23,6 +23,7 @@
 
 import { KNOWLEDGE_LIMITS, SOURCE_TYPE } from './knowledge.js'
 import { PERSONA_LIMITS, PERSONA_STATUS } from './persona.js'
+import { CHAT_LIMITS, DIALOGUE_ROLE, EMOTION } from './chat.js'
 
 /** 备份文件的标识与版本。 */
 export const BACKUP_FORMAT = 'timecapsule-backup'
@@ -56,7 +57,11 @@ const LIMITS = Object.freeze({
   personaStyle: PERSONA_LIMITS.stylePrompt,
   personaDocs: PERSONA_LIMITS.docIds,
   personaFailReason: PERSONA_LIMITS.failReason,
-  personaModel: PERSONA_LIMITS.model
+  personaModel: PERSONA_LIMITS.model,
+  // 对话记录。同样与 domain/chat.js 共用一份数字。
+  // 这条尤其要共用：AI 的回复来自网络，上游抽风时可能吐回一整篇，
+  // 域层按这个数字截断之后，导出的记录就一定导得回来。
+  dialogueContent: CHAT_LIMITS.dialogueContent
 })
 
 const DATE_TIME_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
@@ -85,6 +90,14 @@ const PERSONA_STATUSES = Object.freeze([
   PERSONA_STATUS.READY,
   PERSONA_STATUS.FAILED
 ])
+
+/** 对话记录的角色与情绪标签。取值与 domain/chat.js 对应。 */
+const DIALOGUE_ROLES = Object.freeze([
+  DIALOGUE_ROLE.USER,
+  DIALOGUE_ROLE.PAST_SELF,
+  DIALOGUE_ROLE.PERSONA
+])
+const EMOTION_TAGS = Object.freeze(Object.values(EMOTION))
 
 /** 默认任务分类，与 domain/constants.js 的 DEFAULT_TASK_CATEGORY 一致。 */
 const DEFAULT_CATEGORY = '习惯'
@@ -384,6 +397,49 @@ function sanitizePersona(raw, index, errors) {
   }
 }
 
+/**
+ * 校验一条对话记录。
+ *
+ * 与其它集合不同的一点：它必须**归属于某个对话对象**（胶囊或分身）。
+ * 两个都为空的记录在界面上永远到不了，属于无效数据，导入时直接拒收。
+ *
+ * 情绪标签允许为空——AI 的回复就没有这个字段——但给了就必须是认识的取值。
+ */
+function sanitizeDialogue(raw, index, errors) {
+  const path = `data.dialogues[${index}]`
+  if (!isPlainObject(raw)) {
+    errors.push(`${path} 不是对象`)
+    return null
+  }
+
+  const capsuleId = checkString(raw.capsuleId, LIMITS.id, `${path}.capsuleId`, errors, { optional: true })
+  const personaId = checkString(raw.personaId, LIMITS.id, `${path}.personaId`, errors, { optional: true })
+  if (!capsuleId && !personaId) {
+    errors.push(`${path} 既不属于胶囊也不属于分身`)
+  }
+
+  const emotionTag = checkString(raw.emotionTag, LIMITS.id, `${path}.emotionTag`, errors, { optional: true })
+  if (emotionTag !== null && !EMOTION_TAGS.includes(emotionTag)) {
+    errors.push(`${path}.emotionTag 取值不认识`)
+  }
+
+  const createdAt = checkDateTime(raw.createdAt, `${path}.createdAt`, errors, { optional: false })
+
+  return {
+    id: checkId(raw.id, `${path}.id`, errors),
+    capsuleId,
+    personaId,
+    role: checkEnum(raw.role, DIALOGUE_ROLES, `${path}.role`, errors),
+    content: checkString(raw.content, LIMITS.dialogueContent, `${path}.content`, errors),
+    emotionTag,
+    deleted: checkFlag(raw.deleted, `${path}.deleted`, errors),
+    createdAt,
+    // 缺失时退回 createdAt。合并按 updatedAt 取较新者，没有它，
+    // 「已删除的墓碑」会输给一份更旧的备份，被删掉的对话就复活了。
+    updatedAt: checkDateTime(raw.updatedAt, `${path}.updatedAt`, errors, { optional: true }) ?? createdAt
+  }
+}
+
 function sanitizeProfile(raw, errors) {
   const path = 'data.profile'
   if (raw === null || raw === undefined) return null
@@ -522,7 +578,11 @@ export function validateBackup(raw) {
     // 新增一个集合对旧文件是向后兼容的，不需要升 BACKUP_FORMAT_VERSION。
     knowledge: sanitizeCollection(raw.data.knowledge, 'knowledge', sanitizeKnowledge, errors),
     // 分身同理：比知识库更晚加的集合，老备份里没有就是空数组。
-    personas: sanitizeCollection(raw.data.personas, 'personas', sanitizePersona, errors)
+    personas: sanitizeCollection(raw.data.personas, 'personas', sanitizePersona, errors),
+    // 对话记录同理。
+    // **注意这里没有 AI 配置**：用户的 API Key 不进备份（见 storage/keys.js 的
+    // KEY.aiConfig）——备份文件是会被拷来拷去、发给别人的东西。
+    dialogues: sanitizeCollection(raw.data.dialogues, 'dialogues', sanitizeDialogue, errors)
   }
 
   if (errors.length > 0) {
@@ -554,14 +614,16 @@ export function buildBackup(data, now = new Date()) {
       achievements: data.achievements ?? [],
       settings: data.settings ?? {},
       knowledge: data.knowledge ?? [],
-      personas: data.personas ?? []
+      personas: data.personas ?? [],
+      dialogues: data.dialogues ?? []
     },
     counts: {
       tasks: (data.tasks ?? []).length,
       capsules: (data.capsules ?? []).length,
       achievements: (data.achievements ?? []).length,
       knowledge: (data.knowledge ?? []).length,
-      personas: (data.personas ?? []).length
+      personas: (data.personas ?? []).length,
+      dialogues: (data.dialogues ?? []).length
     }
   }
 }
@@ -638,6 +700,9 @@ export function mergeData(current, incoming) {
   // 分身引用的材料 id 不在这里校验——被引用的文档可能已经被删掉了，
   // 那是正常状态（界面上会显示「材料已删除」），不该让整份导入失败。
   const personas = mergeById(current.personas ?? [], incoming.personas ?? [])
+  // 对话记录同理。它同样有逻辑删除（清空某段对话、删分身时连带删），
+  // 所以也靠 updatedAt 让墓碑赢过更旧的备份。
+  const dialogues = mergeById(current.dialogues ?? [], incoming.dialogues ?? [])
 
   const profile = pickNewer(current.profile, incoming.profile)
 
@@ -650,7 +715,8 @@ export function mergeData(current, incoming) {
       // 设置项以导入的为准：它是使用偏好，没有「更新」的时间戳可比
       settings: { ...(current.settings ?? {}), ...(incoming.settings ?? {}) },
       knowledge: knowledge.list,
-      personas: personas.list
+      personas: personas.list,
+      dialogues: dialogues.list
     },
     summary: {
       tasksAdded: tasks.added,
@@ -661,7 +727,9 @@ export function mergeData(current, incoming) {
       knowledgeAdded: knowledge.added,
       knowledgeUpdated: knowledge.updated,
       personasAdded: personas.added,
-      personasUpdated: personas.updated
+      personasUpdated: personas.updated,
+      dialoguesAdded: dialogues.added,
+      dialoguesUpdated: dialogues.updated
     }
   }
 }
@@ -685,7 +753,8 @@ export function replaceData(incoming) {
       achievements: incoming.achievements ?? [],
       settings: incoming.settings ?? {},
       knowledge: incoming.knowledge ?? [],
-      personas: incoming.personas ?? []
+      personas: incoming.personas ?? [],
+      dialogues: incoming.dialogues ?? []
     },
     summary: {
       tasksAdded: (incoming.tasks ?? []).length,
@@ -696,7 +765,9 @@ export function replaceData(incoming) {
       knowledgeAdded: (incoming.knowledge ?? []).length,
       knowledgeUpdated: 0,
       personasAdded: (incoming.personas ?? []).length,
-      personasUpdated: 0
+      personasUpdated: 0,
+      dialoguesAdded: (incoming.dialogues ?? []).length,
+      dialoguesUpdated: 0
     }
   }
 }

@@ -40,16 +40,11 @@
           {{ t('capsule.open') }}
         </el-button>
         <!--
-          已开启的胶囊原本还有一个「继续与过去的你对话」按钮，跳转到 /chat。
-
-          该页面依赖后端 AI，第一版已从路由下架，所以按钮一并移除。
-          如果只是把按钮留着、让它跳到未注册的路径，后果比报错更糟：
-          vue-router 对未匹配 location 并**不会中止导航**，matched 为空时
-          <router-view> 什么都不渲染——用户会看到侧边栏还在、内容区整片空白，
-          刷新也恢复不了（另外静态托管下还会因 SPA fallback 缺失直接 404）。
-
-          二期接回 /chat 时，把这个按钮与它的跳转函数一并恢复即可。
+          只有**已开启**的胶囊才有这个按钮：封存中的胶囊还属于未来，
+          与它对话等于提前拆封，那会毁掉这个产品最基本的仪式感。
+          路由那一侧也做了同样的限制（对话页只列已开启的胶囊）。
         -->
+        <el-button v-else @click="goChat(c)">{{ t('capsule.continueChat') }}</el-button>
       </template>
     </el-card>
 
@@ -97,12 +92,24 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 // ElMessage / ElMessageBox 由 unplugin-auto-import 自动引入，见 vite.config.js
 import { createCapsule, listCapsules, openCapsule } from '../api/capsule'
 import { listTasks } from '../api/task'
 import { countdown, daysFromNow, formatDateTime, toDateTimeString } from '../utils/date'
 
 const { t } = useI18n()
+const router = useRouter()
+
+/**
+ * 「继续与过去的你对话」。
+ *
+ * 带 `capsuleId` 跳过去，对话页会直接选中这一枚——用户刚在同一张卡片上点了按钮，
+ * 不该再让他去下拉框里找一遍。
+ */
+const goChat = (item) => {
+  router.push({ path: '/app/chat', query: { mode: 'capsule', capsuleId: item.id } })
+}
 
 const capsules = ref([])
 const tasks = ref([])

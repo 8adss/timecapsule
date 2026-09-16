@@ -2,7 +2,7 @@
  * 示例内容的写入与清空。
  *
  * 这是唯一一个**跨集合**的仓储：写一次示例要同时动 `knowledge`、`personas`
- * 与 `meta` 三个键，所以必须走 `writeMany`（IndexedDB 单事务）。
+ * 与 `meta`，清空时还要连带 `dialogues`，所以必须走 `writeMany`（IndexedDB 单事务）。
  * 否则可能出现「文档写进去了、分身没写进去」这种半途状态——
  * 而横幅还会指着那批不存在的记录。
  *
@@ -18,6 +18,7 @@ import {
   demoStateFrom,
   shouldSeedDemo
 } from '../domain/demo.js'
+import { loadDialogues, markTargetsDeletedWithinLock } from './chatRepo.js'
 
 /** 读出与示例相关的三个键，并保证类型正确（存储可能被手改过）。 */
 async function readScope() {
@@ -105,10 +106,18 @@ export async function clear(now = new Date()) {
 
     const docs = markDeleted(current.knowledge, new Set(ids.knowledge), timestamp)
     const personas = markDeleted(current.personas, new Set(ids.personas), timestamp)
+    // 示例分身名下的对话也要一起清。用户在示例里点过「和那时的我对话」的话，
+    // 那些记录在分身消失之后就再也没有入口能到达了，只会留在存储与备份里。
+    const dialogues = markTargetsDeletedWithinLock(
+      await loadDialogues(),
+      { personaIds: ids.personas },
+      timestamp
+    )
 
     await writeMany([
       [KEY.knowledge, docs.list],
       [KEY.personas, personas.list],
+      [KEY.dialogues, dialogues],
       [KEY.meta, { ...current.meta, demoIds: { knowledge: [], personas: [] } }]
     ])
 

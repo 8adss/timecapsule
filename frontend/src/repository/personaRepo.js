@@ -1,15 +1,19 @@
 /**
  * 分身仓储 —— 「一次业务操作」的边界，负责持有写锁并落盘。
  *
- * 与知识库仓储同构：只有一份集合，不存在「改了 A 还必须一起改 B」的场景，
- * 所以每次操作只写 `KEY.personas` 一个键。
- * 判定规则一律下沉到 `domain/persona.js`，本层只做「读 → 交给领域层 → 写回」。
+ * 与知识库仓储同构：判定规则一律下沉到 `domain/persona.js`，
+ * 本层只做「读 → 交给领域层 → 写回」。
+ *
+ * 唯一的例外是 `remove`：删分身要**连带删掉它名下的对话**，
+ * 于是那一次操作会同时写 `KEY.personas` 与 `KEY.dialogues` 两个键
+ * （必须同一个事务，理由见那个函数）。
  */
-import { read, write, KEY } from '../storage/index.js'
+import { read, write, writeMany, KEY } from '../storage/index.js'
 import { withWriteLock } from '../storage/lock.js'
 import { DomainError } from '../domain/errors.js'
 import { nowDateTimeString } from '../domain/time.js'
 import { applyPersonaPatch, buildPersona, sortPersonas, visiblePersonas } from '../domain/persona.js'
+import { loadDialogues, markTargetDeletedWithinLock } from './chatRepo.js'
 
 /**
  * 读取全部分身（含逻辑删除的记录）。
@@ -77,10 +81,14 @@ export async function update(id, patch) {
 }
 
 /**
- * 删除一个分身（逻辑删除）。
+ * 删除一个分身（逻辑删除），**连同它的对话一起**。
  *
  * 不做批量删除：分身是手工一个个建的，数量天然有限，
  * 不像知识库那样可能一次导入几十篇。没有真实需求就不加这个入口。
+ *
+ * 对话必须一起删：删掉分身之后，那些记录从任何页面都到不了，
+ * 只会在导出文件里悄悄堆积，而用户以为「那个分身连同我们说过的话都没了」。
+ * 两处写入放进同一个事务（`writeMany`），否则可能删掉分身却留下一堆孤儿记录。
  *
  * @param {string} id
  * @returns {Promise<void>}
@@ -90,8 +98,19 @@ export async function remove(id) {
     const personas = await loadPersonas()
     findOrThrow(personas, id)
     const timestamp = nowDateTimeString()
-    await savePersonas(personas.map((item) => (
+
+    const nextPersonas = personas.map((item) => (
       item.id === id && item.deleted !== 1 ? { ...item, deleted: 1, updatedAt: timestamp } : item
-    )))
+    ))
+    const nextDialogues = markTargetDeletedWithinLock(
+      await loadDialogues(),
+      { personaId: id },
+      timestamp
+    )
+
+    await writeMany([
+      [KEY.personas, nextPersonas],
+      [KEY.dialogues, nextDialogues]
+    ])
   })
 }

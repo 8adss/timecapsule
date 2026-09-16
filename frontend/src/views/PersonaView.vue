@@ -37,7 +37,7 @@
       <p v-else class="placeholder">{{ t('persona.noStyle') }}</p>
 
       <template #footer>
-        <el-button type="primary" @click="goChat">{{ t('persona.chat') }}</el-button>
+        <el-button type="primary" @click="goChat(item)">{{ t('persona.chat') }}</el-button>
         <el-button @click="openDetail(item)">{{ t('persona.detail') }}</el-button>
         <el-button @click="openEdit(item)">{{ t('persona.edit') }}</el-button>
         <el-popconfirm :title="t('persona.deleteConfirm')" @confirm="doDelete(item)">
@@ -294,11 +294,11 @@ const doDelete = async (item) => {
 /**
  * 「和那时的我对话」。
  *
- * 对话要调大模型，属于下一步——这里明确说一句，而不是跳到尚且不存在的对话页
- * （旧版这里直接 router.push('/chat')，那个页面在新版里没挂载）。
+ * 带 `mode` 与 `personaId` 跳到对话页，那边的 `onMounted` 会把这两个值读出来，
+ * 直接选中这一个分身——否则用户还得在下拉框里再找一遍自己刚点的那个。
  */
-const goChat = () => {
-  ElMessage.info(t('persona.chatNotReady'))
+const goChat = (item) => {
+  router.push({ path: '/app/chat', query: { mode: 'persona', personaId: item.id } })
 }
 
 onMounted(reloadAll)

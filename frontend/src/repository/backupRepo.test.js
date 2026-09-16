@@ -15,6 +15,8 @@ import * as achievementRepo from './achievementRepo.js'
 import * as profileRepo from './profileRepo.js'
 import * as knowledgeRepo from './knowledgeRepo.js'
 import * as personaRepo from './personaRepo.js'
+import * as chatRepo from './chatRepo.js'
+import * as aiRepo from './aiRepo.js'
 import * as backupRepo from './backupRepo.js'
 import { BACKUP_FORMAT, BACKUP_FORMAT_VERSION } from '../domain/backup.js'
 import { ACHIEVEMENT_TYPE, CAPSULE_STATUS, TASK_STATUS } from '../domain/constants.js'
@@ -469,5 +471,76 @@ describe('知识库与分身也在备份范围内', () => {
 
     expect(await knowledgeRepo.list()).toHaveLength(0)
     expect(await personaRepo.list()).toHaveLength(0)
+  })
+})
+
+describe('对话记录进备份，AI 配置不进', () => {
+  const doc = { title: '关于我', content: '我喜欢在清晨跑步', sourceType: 'PASTE' }
+
+  /** 造一次真实的对话：一篇材料 + 一个分身 + 一轮对话（胶囊那边也来一轮）。 */
+  async function seedChat() {
+    const created = await knowledgeRepo.create(doc)
+    const persona = await personaRepo.create({
+      name: '那时的我',
+      selfDate: '2026-09-01',
+      docIds: [created.id]
+    })
+    await chatRepo.appendTurn({ personaId: persona.id, message: '在吗', reply: '在的' })
+    await chatRepo.appendTurn({ capsuleId: 'c-legacy', message: '我跑完了', reply: '真好' })
+    await aiRepo.saveConfig({ provider: 'deepseek', model: 'deepseek-chat', apiKey: 'sk-secret' })
+    return persona
+  }
+
+  it('导出时带上对话与条数', async () => {
+    await seedChat()
+
+    const backup = await backupRepo.createBackup()
+    expect(backup.counts.dialogues).toBe(4)
+    expect(backup.data.dialogues).toHaveLength(4)
+  })
+
+  it('导出 → 清空 → 导入后对话还在', async () => {
+    const persona = await seedChat()
+
+    const backup = await backupRepo.createBackup()
+    await backupRepo.clearAllData()
+    expect(await chatRepo.loadDialogues()).toHaveLength(0)
+
+    await backupRepo.importBackup(JSON.parse(JSON.stringify(backup)), backupRepo.IMPORT_MODE.REPLACE)
+
+    expect(await chatRepo.history({ personaId: persona.id })).toHaveLength(2)
+    expect(await chatRepo.history({ capsuleId: 'c-legacy' })).toHaveLength(2)
+  })
+
+  it('回滚能把清空前的对话找回来', async () => {
+    await seedChat()
+
+    await backupRepo.clearAllData()
+    await backupRepo.restoreSnapshot()
+
+    expect(await chatRepo.loadDialogues()).toHaveLength(4)
+  })
+
+  it('**API Key 不在备份文件里**（备份是会被拷来拷去、发给别人的东西）', async () => {
+    await seedChat()
+
+    const backup = await backupRepo.createBackup()
+    const text = JSON.stringify(backup)
+
+    expect(backup.data.aiConfig).toBeUndefined()
+    expect(text).not.toContain('sk-secret')
+    // 也不是「键还在、只是空着」——整个键就不该出现
+    expect(text).not.toContain('aiConfig')
+  })
+
+  it('清空数据**不动** AI 配置：它是凭据不是数据，且快照里没有它', async () => {
+    await aiRepo.saveConfig({ provider: 'deepseek', apiKey: 'sk-secret' })
+    await backupRepo.clearAllData()
+
+    // 清掉的话就回滚不回来了（快照存的是 readAll() 的结果，不含 aiConfig），
+    // 而对话框上写着「操作前会自动保存快照，之后可以回滚」。
+    // 要删 Key，设置页有明确的「清除配置」按钮。
+    const config = await aiRepo.loadConfig()
+    expect(config.apiKey).toBe('sk-secret')
   })
 })

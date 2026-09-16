@@ -12,13 +12,11 @@ const SITE_NAME = 'TimeCapsule'
  *   `/`      → LandingView（独立落地页，不带侧边栏）
  *   `/app/*` → AppShell（侧边栏外壳）→ 各功能页
  *
- * 知识库与我的分身都已经挂回来了（`/app/knowledge`、`/app/persona`）：
- * 它们原本也走后端，但改造时换成了本地存储，一行 AI 代码都不需要。
- *
- * **仍然未挂载**的是真正依赖大模型的对话页：
- *   - 与过去的自己对话
- * 它保留在仓库里（`.vue` 与 `src/api/` 模块都在），接回 AI 时再挂上；
- * 在那之前不参与打包——Vite 只打包路由真正引用到的模块。
+ * 三个原本依赖后端的功能页现在**全部挂回来了**：
+ *   `/app/knowledge` 知识库（纯本地，不需要 AI）
+ *   `/app/persona`   我的分身（纯本地，画像手写）
+ *   `/app/chat`      对话（**唯一会出网的页面**：调用大模型，
+ *                    经同源 Cloudflare 函数转发，见 functions/api/ai.js）
  *
  * 所有 `component` 都用动态 import：官网访客不会下载到应用外壳与功能页的代码，
  * 反过来应用内切换也只按需加载当前页。
@@ -40,6 +38,7 @@ const routes = [
       { path: 'capsules', component: () => import('../views/CapsuleView.vue'), meta: { title: 'route.capsules' } },
       { path: 'knowledge', component: () => import('../views/KnowledgeView.vue'), meta: { title: 'route.knowledge' } },
       { path: 'persona', component: () => import('../views/PersonaView.vue'), meta: { title: 'route.persona' } },
+      { path: 'chat', component: () => import('../views/ChatView.vue'), meta: { title: 'route.chat' } },
       { path: 'profile', component: () => import('../views/ProfileView.vue'), meta: { title: 'route.profile' } },
       { path: 'settings', component: () => import('../views/SettingsView.vue'), meta: { title: 'route.settings' } }
     ]
@@ -51,6 +50,7 @@ const routes = [
   { path: '/capsules', redirect: '/app/capsules' },
   { path: '/knowledge', redirect: '/app/knowledge' },
   { path: '/persona', redirect: '/app/persona' },
+  { path: '/chat', redirect: '/app/chat' },
   { path: '/profile', redirect: '/app/profile' },
   { path: '/settings', redirect: '/app/settings' },
 

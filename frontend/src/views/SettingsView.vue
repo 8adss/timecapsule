@@ -35,6 +35,76 @@
 
     <el-card shadow="never" class="card">
       <template #header>
+        <span class="card-title">{{ t('settings.aiTitle') }}</span>
+      </template>
+
+      <el-alert
+        class="warn"
+        type="info"
+        :closable="false"
+        show-icon
+        :title="t('settings.aiPrivacyTitle')"
+        :description="t('settings.aiPrivacyDesc')"
+      />
+
+      <div class="field">
+        <div class="field-label">{{ t('settings.aiProvider') }}</div>
+        <el-select
+          v-model="aiForm.provider"
+          class="ai-control"
+          :placeholder="t('settings.aiProviderPlaceholder')"
+          @change="onProviderChange"
+        >
+          <el-option
+            v-for="item in AI_PROVIDERS"
+            :key="item.id"
+            :label="item.label"
+            :value="item.id"
+          />
+        </el-select>
+      </div>
+
+      <div class="field">
+        <div class="field-label">{{ t('settings.aiKey') }}</div>
+        <el-input
+          v-model="aiForm.apiKey"
+          class="ai-control"
+          type="password"
+          show-password
+          :placeholder="keyPlaceholder"
+        />
+        <div class="field-hint">{{ t('settings.aiKeyHint') }}</div>
+      </div>
+
+      <div class="field">
+        <div class="field-label">{{ t('settings.aiModel') }}</div>
+        <el-select
+          v-model="aiForm.model"
+          class="ai-control"
+          filterable
+          allow-create
+          default-first-option
+          :placeholder="t('settings.aiModelPlaceholder')"
+        >
+          <el-option v-for="name in models" :key="name" :label="name" :value="name" />
+        </el-select>
+        <div class="field-hint">{{ modelHint }}</div>
+      </div>
+
+      <div class="action-row">
+        <el-button type="primary" :loading="savingAi" @click="doSaveAi">
+          {{ t('settings.aiSave') }}
+        </el-button>
+        <el-button :loading="testingAi" :disabled="!canTest" @click="doTestAi">
+          {{ t('settings.aiTest') }}
+        </el-button>
+        <el-button v-if="aiConfigured" @click="doClearAi">{{ t('settings.aiClear') }}</el-button>
+        <span class="action-hint">{{ aiStatus }}</span>
+      </div>
+    </el-card>
+
+    <el-card shadow="never" class="card">
+      <template #header>
         <span class="card-title">{{ t('settings.backupTitle') }}</span>
       </template>
 
@@ -126,7 +196,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 // ElMessage / ElMessageBox 由 unplugin-auto-import 自动引入，见 vite.config.js
 import {
@@ -136,6 +206,15 @@ import {
   rollbackToSnapshot,
   wipeAllData
 } from '../api/backup'
+import {
+  AI_PROVIDERS,
+  clearAiConfig,
+  getAiConfig,
+  maskApiKey,
+  providerById,
+  saveAiConfig,
+  testAiConnection
+} from '../api/ai'
 import { useUserStore } from '../stores/user'
 import { formatDateTime } from '../utils/date'
 import { detectStorageMode } from '../storage'
@@ -157,6 +236,119 @@ const currentLocale = ref(getLocale())
 const changeLocale = (value) => {
   setLocale(value)
   currentLocale.value = value
+}
+
+// ---------------------------------------------------------------------------
+// AI 配置
+// ---------------------------------------------------------------------------
+
+const aiForm = reactive({ provider: '', model: '', apiKey: '' })
+const savedConfig = ref(null)
+const aiConfigured = ref(false)
+const aiKeyMask = ref('')
+const models = ref([])
+const savingAi = ref(false)
+const testingAi = ref(false)
+
+/**
+ * 已存了 Key 时，输入框拿**掩码**当占位符——真 Key 不回填到页面上。
+ * 截图、录屏、共享屏幕时不会连密钥一起送出去；要换就直接输入新的。
+ */
+const keyPlaceholder = computed(() => (
+  aiKeyMask.value !== '' ? aiKeyMask.value : t('settings.aiKeyPlaceholder')
+))
+
+/** 没填新 Key 也能测：那就用已保存的那把。 */
+const canTest = computed(() => (
+  aiForm.provider !== '' && (aiForm.apiKey.trim() !== '' || aiConfigured.value)
+))
+
+const modelHint = computed(() => (
+  models.value.length > 0
+    ? t('settings.aiModelFromList', { n: models.value.length })
+    : t('settings.aiModelHint')
+))
+
+const aiStatus = computed(() => (
+  aiConfigured.value
+    ? t('settings.aiStatusOn', { key: aiKeyMask.value, model: savedConfig.value?.model ?? '' })
+    : t('settings.aiStatusOff')
+))
+
+const loadAi = async () => {
+  const config = await getAiConfig()
+  savedConfig.value = config
+  aiConfigured.value = Boolean(config?.provider && config?.model && config?.apiKey)
+  aiForm.provider = config?.provider ?? ''
+  aiForm.model = config?.model ?? ''
+  // 刻意留空：留空表示「不改动已保存的 Key」
+  aiForm.apiKey = ''
+  aiKeyMask.value = config?.apiKey ? maskApiKey(config.apiKey) : ''
+}
+
+/**
+ * 换供应商。
+ *
+ * 模型名是**跟着供应商走**的——`deepseek-chat` 在 OpenAI 那边根本不存在。
+ * 所以这里一律换成新供应商的默认模型，而不是「只在空着时才填」：
+ * 后者会让用户从 DeepSeek 切到 OpenAI 之后继续拿 `deepseek-chat` 去请求，
+ * 每一轮都被上游以「模型不存在」拒绝，而这时模型列表还是空的，
+ * 下拉框里给不出任何可用的替代。
+ */
+const onProviderChange = (id) => {
+  models.value = []
+  const provider = providerById(id)
+  aiForm.model = provider ? provider.defaultModel : ''
+}
+
+const doSaveAi = async () => {
+  savingAi.value = true
+  try {
+    await saveAiConfig({
+      provider: aiForm.provider,
+      model: aiForm.model,
+      apiKey: aiForm.apiKey
+    })
+    await loadAi()
+    ElMessage.success(t('settings.aiSaved'))
+  } catch (e) {
+    /* 已提示 */
+  } finally {
+    savingAi.value = false
+  }
+}
+
+const doTestAi = async () => {
+  testingAi.value = true
+  try {
+    models.value = await testAiConnection({ provider: aiForm.provider, apiKey: aiForm.apiKey })
+    ElMessage.success(t('settings.aiTestOk', { n: models.value.length }))
+  } catch (e) {
+    /* 已提示 */
+  } finally {
+    testingAi.value = false
+  }
+}
+
+const doClearAi = async () => {
+  try {
+    await ElMessageBox.confirm(
+      t('settings.aiClearConfirm'),
+      t('settings.aiClearConfirmTitle'),
+      { type: 'warning', confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel') }
+    )
+  } catch {
+    return
+  }
+
+  try {
+    await clearAiConfig()
+    models.value = []
+    await loadAi()
+    ElMessage.success(t('settings.aiCleared'))
+  } catch (e) {
+    /* 已提示 */
+  }
 }
 
 /** 快照来源的说明，让用户知道回滚会回到哪一步之前。 */
@@ -272,12 +464,19 @@ const doClear = async () => {
   }
 }
 
-onMounted(refreshSnapshot)
+onMounted(() => {
+  refreshSnapshot()
+  loadAi()
+})
 </script>
 
 <style scoped>
 .card {
   margin-bottom: var(--sp-4);
+}
+.ai-control {
+  width: 320px;
+  max-width: 100%;
 }
 .card-title {
   font-size: var(--fs-base);

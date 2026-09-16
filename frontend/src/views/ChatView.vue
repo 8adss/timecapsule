@@ -1,159 +1,249 @@
 <template>
-  <div class="page chat-page">
-    <div class="chat-head">
-      <div class="head-left">
-        <h1 class="page-title">对话</h1>
+  <div class="page">
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">{{ t('chat.title') }}</h1>
         <p class="page-desc">{{ headHint }}</p>
       </div>
-      <el-radio-group v-model="mode" @change="onModeChange">
-        <el-radio-button value="capsule">过去的你</el-radio-button>
-        <el-radio-button value="persona">何时的自己</el-radio-button>
-      </el-radio-group>
+      <div class="page-actions">
+        <el-radio-group v-model="mode" :disabled="sending" @change="onModeChange">
+          <el-radio-button :value="CHAT_MODE.CAPSULE">{{ t('chat.modeCapsule') }}</el-radio-button>
+          <el-radio-button :value="CHAT_MODE.PERSONA">{{ t('chat.modePersona') }}</el-radio-button>
+        </el-radio-group>
+      </div>
     </div>
 
-    <div class="chat-toolbar">
-      <el-select
-        v-model="targetId"
-        :placeholder="mode === 'capsule' ? '选择一个已开启的时间胶囊' : '选择一个已就绪的分身'"
-        style="width: 100%"
-        :loading="loadingTargets"
-        :disabled="targets.length === 0"
-        @change="loadHistory"
-      >
-        <el-option
-          v-for="item in targets"
-          :key="item.id"
-          :label="item.label"
-          :value="item.id"
-        />
-      </el-select>
-      <el-button v-if="mode === 'persona'" @click="$router.push('/personas')">管理分身</el-button>
-      <el-button v-else @click="$router.push('/capsules')">去胶囊页</el-button>
-    </div>
-
-    <div ref="msgBox" v-loading="loadingHistory" class="msg-box">
-      <!-- 没有任何可对话对象 -->
-      <el-empty v-if="targets.length === 0" :description="emptyHint" />
-
-      <template v-else>
-        <div v-if="messages.length === 0" class="hint">
-          {{ mode === 'capsule'
-            ? '这是你和「过去的自己」的第一次对话，说点什么吧。'
-            : `这是你和「${currentTargetLabel}」的第一次对话。TA 记得你写过的那些事，可以聊聊。` }}
-        </div>
-
-        <div v-for="m in messages" :key="m.id" :class="['msg-row', isUser(m) ? 'user' : 'ai']">
-          <div class="bubble-wrap">
-            <div class="bubble">{{ m.content }}</div>
-            <div class="meta">
-              <el-tag v-if="m.emotionTag" size="small" effect="plain">{{ m.emotionTag }}</el-tag>
-              <span class="time">{{ formatDateTime(m.createdAt) }}</span>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="sending" class="msg-row ai">
-          <div class="bubble-wrap">
-            <div class="bubble typing">
-              {{ mode === 'capsule' ? '过去的你正在回想…' : '那时的你正在回想…' }}
-            </div>
-          </div>
-        </div>
-      </template>
-    </div>
-
-    <div class="chat-input">
-      <el-input
-        v-model="input"
-        :placeholder="inputPlaceholder"
-        :disabled="!targetId || sending"
-        maxlength="2000"
-        @keyup.enter="onEnter"
-        @compositionstart="composing = true"
-        @compositionend="composing = false"
-      />
-      <el-button
-        type="primary"
-        :loading="sending"
-        :disabled="!targetId || !input.trim()"
-        @click="send"
-      >
-        发送
+    <!-- 没配 AI 就说清楚下一步去哪，而不是等用户打完字才报错 -->
+    <el-alert
+      v-if="!configured"
+      class="ai-alert"
+      type="info"
+      :closable="false"
+      show-icon
+      :title="t('chat.notConfigured')"
+    >
+      <span>{{ t('chat.notConfiguredHint') }}</span>
+      <el-button link type="primary" @click="router.push('/app/settings')">
+        {{ t('chat.goSettings') }}
       </el-button>
-    </div>
+    </el-alert>
+
+    <el-card shadow="never" class="chat-card">
+      <div class="chat-toolbar">
+        <el-select
+          v-model="targetId"
+          class="target-select"
+          :placeholder="targetPlaceholder"
+          :loading="loadingTargets"
+          :disabled="targets.length === 0 || sending"
+          @change="loadHistory"
+        >
+          <el-option
+            v-for="item in targets"
+            :key="item.id"
+            :label="targetLabel(item)"
+            :value="item.id"
+          />
+        </el-select>
+
+        <el-button @click="goManage">
+          {{ isPersona ? t('chat.managePersona') : t('chat.goCapsule') }}
+        </el-button>
+
+        <el-popconfirm
+          v-if="targetId && messages.length > 0"
+          :title="t('chat.clearConfirm')"
+          :confirm-button-text="t('common.confirm')"
+          :cancel-button-text="t('common.cancel')"
+          width="260"
+          @confirm="doClear"
+        >
+          <template #reference>
+            <el-button :disabled="sending">{{ t('chat.clear') }}</el-button>
+          </template>
+        </el-popconfirm>
+      </div>
+
+      <div ref="msgBox" v-loading="loadingHistory" class="msg-box">
+        <el-empty v-if="targets.length === 0" :description="emptyHint">
+          <el-button type="primary" @click="goManage">
+            {{ isPersona ? t('chat.createPersona') : t('chat.createCapsule') }}
+          </el-button>
+        </el-empty>
+
+        <template v-else>
+          <div v-if="messages.length === 0" class="hint">{{ firstHint }}</div>
+
+          <div
+            v-for="item in messages"
+            :key="item.id"
+            :class="['msg-row', item.role === DIALOGUE_ROLE.USER ? 'user' : 'ai']"
+          >
+            <div class="bubble-wrap">
+              <div class="bubble">{{ item.content }}</div>
+              <div class="meta">
+                <el-tag v-if="item.emotionTag" size="small" effect="plain">
+                  {{ t(`emotion.${item.emotionTag}`) }}
+                </el-tag>
+                <span class="time">{{ item.createdAt.slice(0, 16) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 等待时的占位气泡。用一句话而不是转圈：它本身就是这个产品该有的语气 -->
+          <div v-if="sending" class="msg-row ai">
+            <div class="bubble-wrap">
+              <div class="bubble typing">{{ typingHint }}</div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <div class="chat-input">
+        <el-input
+          v-model="input"
+          :placeholder="inputPlaceholder"
+          :disabled="!targetId || sending"
+          :maxlength="LIMITS.message"
+          @keyup.enter="onEnter"
+          @compositionstart="composing = true"
+          @compositionend="composing = false"
+        />
+        <el-button
+          type="primary"
+          :loading="sending"
+          :disabled="!targetId || sending || input.trim() === ''"
+          @click="doSend"
+        >
+          {{ t('chat.send') }}
+        </el-button>
+      </div>
+    </el-card>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { chatWithPastSelf, chatWithPersona, getChatHistory, getPersonaHistory } from '../api/chat'
-import { listOpenedCapsules } from '../api/capsule'
-import { listPersonas } from '../api/persona'
-import { useUserStore } from '../stores/user'
-import { formatDateTime } from '../utils/date'
+/**
+ * 对话页：两种对象共用一个页面。
+ *
+ * 与旧版最大的差别在「数据从哪来」：旧版每一次读写都打后端接口，
+ * 现在全部走本地仓储，只有**真正调用大模型**那一步会出网
+ * （`api/chat.js` → 同源的 Cloudflare 函数，见 functions/api/ai.js）。
+ *
+ * 两处细节是照旧版保留下来的，都是踩过坑才有的：
+ * 1. **中文输入法选词时按 Enter 不发送**（compositionstart/end 守卫），
+ *    否则打「shurufa」的过程中就会被截成一条消息发出去；
+ * 2. **发送失败把文字还给输入框**，用户不必重打一遍。
+ */
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+// ElMessage / ElMessageBox 由 unplugin-auto-import 自动引入，见 vite.config.js
+import {
+  CHAT_LIMITS as LIMITS,
+  CHAT_MODE,
+  DIALOGUE_ROLE,
+  clearHistory,
+  getHistory,
+  listTargets,
+  sendMessage
+} from '../api/chat'
+import { getAiConfig } from '../api/ai'
 
-const userStore = useUserStore()
+const { t } = useI18n()
 const route = useRoute()
+const router = useRouter()
 
-const mode = ref('capsule')
+const mode = ref(CHAT_MODE.CAPSULE)
 const targets = ref([])
-const targetId = ref(null)
+const targetId = ref('')
 const messages = ref([])
 const input = ref('')
 const msgBox = ref(null)
+const configured = ref(true)
 const loadingTargets = ref(false)
 const loadingHistory = ref(false)
 const sending = ref(false)
 const composing = ref(false)
 
-const isUser = (message) => message.role === 'user'
+/**
+ * 每换一次对话对象就 +1，用来判断异步回来的回复还属不属于「当前这个对象」。
+ *
+ * 发送期间控件已经禁用，所以正常操作走不到这里；留着是因为「禁用」只是这一层的
+ * 约定，而一次错配的后果很难看：消息其实存进了原来那个对象的历史，界面却把它
+ * 追加到了当前列表里——用户看到的是「我刚发的话不见了，还多出一句莫名其妙的话」。
+ */
+let epoch = 0
 
-const currentTargetLabel = computed(
-  () => targets.value.find((t) => t.id === targetId.value)?.label || ''
+const isPersona = computed(() => mode.value === CHAT_MODE.PERSONA)
+
+const headHint = computed(() => (isPersona.value ? t('chat.headPersona') : t('chat.headCapsule')))
+
+const targetPlaceholder = computed(() => (
+  isPersona.value ? t('chat.pickPersona') : t('chat.pickCapsule')
+))
+
+const emptyHint = computed(() => (
+  isPersona.value ? t('chat.noPersona') : t('chat.noCapsule')
+))
+
+const inputPlaceholder = computed(() => (
+  isPersona.value ? t('chat.inputPersona') : t('chat.inputCapsule')
+))
+
+const typingHint = computed(() => (
+  isPersona.value ? t('chat.typingPersona') : t('chat.typingCapsule')
+))
+
+const firstHint = computed(() => {
+  if (!isPersona.value) return t('chat.firstCapsule')
+  const current = targets.value.find((item) => item.id === targetId.value)
+  return t('chat.firstPersona', { name: current?.name ?? '' })
+})
+
+/** 胶囊没有名字，用正文开头当标题——下拉框里得能分辨出是哪一枚。 */
+const previewOf = (text) => {
+  const flat = String(text ?? '').replace(/\s+/g, ' ').trim()
+  return flat.length > 24 ? `${flat.slice(0, 24)}…` : flat
+}
+
+const targetLabel = (item) => (
+  isPersona.value
+    ? `${item.name} · ${item.selfDate}`
+    : `${previewOf(item.content)} · ${item.createdAt.slice(0, 10)}`
 )
 
-const headHint = computed(() =>
-  mode.value === 'capsule'
-    ? '人设来自你封存的一枚时间胶囊 —— 与「写下那句话时的你」对话'
-    : '人设来自知识库蒸馏出的分身 —— 与「某个时间点的你」对话'
-)
+const goManage = () => {
+  router.push(isPersona.value ? '/app/persona' : '/app/capsules')
+}
 
-const emptyHint = computed(() =>
-  mode.value === 'capsule'
-    ? '还没有已开启的胶囊。去「时间胶囊」页开启一枚吧'
-    : '还没有生成好的分身。去「我的分身」页用知识库创建一个'
-)
+const scrollToBottom = async () => {
+  await nextTick()
+  if (msgBox.value) msgBox.value.scrollTop = msgBox.value.scrollHeight
+}
 
-const inputPlaceholder = computed(() =>
-  mode.value === 'capsule' ? '对过去的你说点什么…（Enter 发送）' : '和那时的自己聊聊…（Enter 发送）'
-)
-
-/** 按当前模式加载可选对话对象 */
-const loadTargets = async () => {
-  loadingTargets.value = true
+const loadConfig = async () => {
   try {
-    if (mode.value === 'capsule') {
-      const capsules = await listOpenedCapsules(userStore.userId)
-      targets.value = capsules.map((c) => ({
-        id: c.id,
-        label: `🕐 ${formatDateTime(c.openedAt)} · ${snippet(c.content)}`
-      }))
-    } else {
-      const personas = await listPersonas(userStore.userId)
-      targets.value = personas
-        .filter((p) => p.status === 'READY')
-        .map((p) => ({ id: p.id, label: `🪞 ${p.name}（${p.selfDate}）` }))
-    }
-  } finally {
-    loadingTargets.value = false
+    const config = await getAiConfig()
+    configured.value = Boolean(config?.provider && config?.model && config?.apiKey)
+  } catch (e) {
+    // 读不到配置不该让整页报错：历史照样能看，只是不能发消息
+    configured.value = false
   }
 }
 
-const snippet = (text) => {
-  const flat = (text || '').replace(/\s+/g, ' ')
-  return flat.length > 18 ? flat.slice(0, 18) + '…' : flat
+const loadTargets = async () => {
+  loadingTargets.value = true
+  epoch += 1
+  try {
+    targets.value = await listTargets(mode.value)
+    // 默认选中第一个：进页面就能直接说话，少一次点击
+    targetId.value = targets.value.length > 0 ? targets.value[0].id : ''
+    messages.value = targetId.value === '' ? [] : await getHistory(mode.value, targetId.value)
+    await scrollToBottom()
+  } finally {
+    loadingTargets.value = false
+  }
 }
 
 const loadHistory = async () => {
@@ -162,156 +252,150 @@ const loadHistory = async () => {
     return
   }
   loadingHistory.value = true
+  epoch += 1
   try {
-    messages.value = mode.value === 'capsule'
-      ? await getChatHistory(userStore.userId, targetId.value)
-      : await getPersonaHistory(userStore.userId, targetId.value)
-    scrollBottom()
+    messages.value = await getHistory(mode.value, targetId.value)
+    await scrollToBottom()
   } finally {
     loadingHistory.value = false
   }
 }
 
 const onModeChange = async () => {
-  targetId.value = null
+  targetId.value = ''
   messages.value = []
   await loadTargets()
-  if (targets.value.length > 0) {
-    targetId.value = targets.value[0].id
-    await loadHistory()
-  }
 }
 
 const onEnter = () => {
-  // 中文输入法选词时按 Enter 不应该发送
+  // 输入法还在选词，这个 Enter 是「上屏」而不是「发送」
   if (composing.value) return
-  send()
+  doSend()
 }
 
-const send = async () => {
+const doSend = async () => {
   const text = input.value.trim()
-  if (!text || sending.value || !targetId.value) return
+  if (text === '' || !targetId.value || sending.value) return
 
-  const tempId = `tmp-${Date.now()}`
+  const token = epoch
   sending.value = true
-  input.value = ''
-  messages.value.push({ id: tempId, role: 'user', content: text, createdAt: null })
-  scrollBottom()
-
   try {
-    const reply = mode.value === 'capsule'
-      ? await chatWithPastSelf({ userId: userStore.userId, capsuleId: targetId.value, message: text })
-      : await chatWithPersona({ userId: userStore.userId, personaId: targetId.value, message: text })
-    messages.value.push(reply)
-    scrollBottom()
+    const { user, ai } = await sendMessage(mode.value, targetId.value, text)
+    // 发送是成功的，输入框照清——不管下面那一步走不走得到
+    input.value = ''
+
+    if (token === epoch) {
+      messages.value = [...messages.value, user, ai]
+      await scrollToBottom()
+    }
   } catch (e) {
-    // 失败时撤掉临时气泡、内容还给输入框，避免界面留下一条其实没发出去的消息
-    messages.value = messages.value.filter((m) => m.id !== tempId)
-    input.value = text
-    ElMessage.warning('消息没有发送成功，已放回输入框')
+    // **输入框保持不动**：文字还在里面，用户可以直接重发。
+    // 错误提示已由 api 层统一弹出（见 api/local.js），这里保持安静。
   } finally {
     sending.value = false
   }
 }
 
-const scrollBottom = () => {
-  setTimeout(() => {
-    if (msgBox.value) {
-      msgBox.value.scrollTop = msgBox.value.scrollHeight
-    }
-  }, 60)
+const doClear = async () => {
+  try {
+    await clearHistory(mode.value, targetId.value)
+    messages.value = []
+    ElMessage.success(t('chat.cleared'))
+  } catch (e) {
+    /* 已提示 */
+  }
 }
 
 onMounted(async () => {
-  // 从胶囊页/分身页跳转过来时带着 mode 与目标 id
-  if (route.query.mode === 'persona') {
-    mode.value = 'persona'
-  }
-  await loadTargets()
+  // 从分身页/胶囊页跳过来时带着 mode 与目标 id
+  if (route.query.mode === CHAT_MODE.PERSONA) mode.value = CHAT_MODE.PERSONA
 
-  const fromPersona = Number(route.query.personaId)
-  const fromCapsule = Number(route.query.capsuleId)
+  await Promise.all([loadConfig(), loadTargets()])
 
-  if (mode.value === 'persona' && fromPersona && targets.value.some((t) => t.id === fromPersona)) {
-    targetId.value = fromPersona
-  } else if (mode.value === 'capsule' && fromCapsule && targets.value.some((t) => t.id === fromCapsule)) {
-    targetId.value = fromCapsule
-  } else if (targets.value.length > 0) {
-    targetId.value = targets.value[0].id
-  }
-
-  if (targetId.value) {
+  const wanted = isPersona.value ? route.query.personaId : route.query.capsuleId
+  if (typeof wanted === 'string' && targets.value.some((item) => item.id === wanted)) {
+    targetId.value = wanted
     await loadHistory()
   }
 })
 </script>
 
 <style scoped>
-.chat-page {
+.ai-alert {
+  margin-bottom: var(--sp-4);
+}
+
+.chat-card :deep(.el-card__body) {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 92px);
 }
-.chat-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--sp-4);
-  margin-bottom: var(--sp-4);
-  flex-wrap: wrap;
-}
+
 .chat-toolbar {
   display: flex;
   gap: var(--sp-2);
-  margin-bottom: var(--sp-3);
+  align-items: center;
 }
-.msg-box {
+
+.target-select {
   flex: 1;
+}
+
+.msg-box {
+  min-height: 300px;
+  max-height: 52vh;
   overflow-y: auto;
-  background: var(--mt-surface);
-  border: 1px solid var(--mt-border-soft);
-  border-radius: var(--radius-lg);
-  padding: var(--sp-5);
+  margin: var(--sp-4) 0;
+  padding: var(--sp-2) var(--sp-1);
 }
+
 .hint {
-  color: var(--mt-text-muted);
-  font-size: var(--fs-sm);
+  padding: var(--sp-6) var(--sp-4);
   text-align: center;
-  padding: var(--sp-6) 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-loose);
+  color: var(--mt-text-muted);
 }
+
 .msg-row {
   display: flex;
   margin-bottom: var(--sp-4);
 }
+
 .msg-row.user {
   justify-content: flex-end;
 }
+
 .bubble-wrap {
-  max-width: 72%;
+  max-width: 76%;
 }
+
 .bubble {
-  padding: 10px var(--sp-4);
-  border-radius: 10px;
-  line-height: var(--lh-base);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius);
   font-size: var(--fs-base);
+  line-height: var(--lh-base);
   white-space: pre-wrap;
   word-break: break-word;
 }
+
 /* 用户气泡白字压在奶茶棕上，这里用加深一档的棕保证对比度达标 */
-.user .bubble {
+.msg-row.user .bubble {
   background: #8a6440;
   color: #fff;
   border-bottom-right-radius: 3px;
 }
-.ai .bubble {
+
+.msg-row.ai .bubble {
   background: var(--mt-surface-alt);
   color: var(--mt-text);
   border: 1px solid var(--mt-border-soft);
   border-bottom-left-radius: 3px;
 }
+
 .typing {
   color: var(--mt-text-muted);
 }
+
 .meta {
   display: flex;
   align-items: center;
@@ -320,12 +404,13 @@ onMounted(async () => {
   font-size: var(--fs-xs);
   color: var(--mt-text-faint);
 }
-.user .meta {
+
+.msg-row.user .meta {
   justify-content: flex-end;
 }
+
 .chat-input {
   display: flex;
   gap: var(--sp-2);
-  margin-top: var(--sp-3);
 }
 </style>

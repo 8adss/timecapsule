@@ -41,17 +41,18 @@ export const IMPORT_MODE = Object.freeze({
 
 /**
  * 读取当前全部数据（按逻辑分区名，与备份文件的 data 字段一致）。
- * @returns {Promise<{profile: object|null, tasks: Array, capsules: Array, achievements: Array, settings: object, knowledge: Array, personas: Array}>}
+ * @returns {Promise<{profile: object|null, tasks: Array, capsules: Array, achievements: Array, settings: object, knowledge: Array, personas: Array, dialogues: Array}>}
  */
 export async function readAll() {
-  const [profile, tasks, capsules, achievements, settings, knowledge, personas] = await Promise.all([
+  const [profile, tasks, capsules, achievements, settings, knowledge, personas, dialogues] = await Promise.all([
     read(KEY.profile, null),
     read(KEY.tasks, []),
     read(KEY.capsules, []),
     read(KEY.achievements, []),
     read(KEY.settings, {}),
     read(KEY.knowledge, []),
-    read(KEY.personas, [])
+    read(KEY.personas, []),
+    read(KEY.dialogues, [])
   ])
   return {
     profile: profile ?? null,
@@ -60,7 +61,8 @@ export async function readAll() {
     achievements: Array.isArray(achievements) ? achievements : [],
     settings: settings && typeof settings === 'object' ? settings : {},
     knowledge: Array.isArray(knowledge) ? knowledge : [],
-    personas: Array.isArray(personas) ? personas : []
+    personas: Array.isArray(personas) ? personas : [],
+    dialogues: Array.isArray(dialogues) ? dialogues : []
   }
 }
 
@@ -149,7 +151,8 @@ export async function importBackup(raw, mode = IMPORT_MODE.MERGE, now = new Date
       [KEY.achievements, nextAchievements],
       [KEY.settings, draft.settings],
       [KEY.knowledge, draft.knowledge],
-      [KEY.personas, draft.personas]
+      [KEY.personas, draft.personas],
+      [KEY.dialogues, draft.dialogues]
     ])
 
     return {
@@ -160,7 +163,8 @@ export async function importBackup(raw, mode = IMPORT_MODE.MERGE, now = new Date
         capsules: draft.capsules.length,
         achievements: nextAchievements.length,
         knowledge: draft.knowledge.length,
-        personas: draft.personas.length
+        personas: draft.personas.length,
+        dialogues: draft.dialogues.length
       }
     }
   })
@@ -209,6 +213,7 @@ export async function restoreSnapshot(now = new Date()) {
     // 这不会让资料无声消失——回滚本身会先把**当前**数据存成新快照，误删再回滚一次即可取回。
     const knowledge = Array.isArray(restored.knowledge) ? restored.knowledge : []
     const personas = Array.isArray(restored.personas) ? restored.personas : []
+    const dialogues = Array.isArray(restored.dialogues) ? restored.dialogues : []
     const profile = restored.profile ?? await loadProfile(now)
 
     const { profile: nextProfile, achievements: nextAchievements } = reconcileWithinLock(
@@ -223,7 +228,8 @@ export async function restoreSnapshot(now = new Date()) {
       [KEY.achievements, nextAchievements],
       [KEY.settings, restored.settings ?? {}],
       [KEY.knowledge, knowledge],
-      [KEY.personas, personas]
+      [KEY.personas, personas],
+      [KEY.dialogues, dialogues]
     ])
 
     return {
@@ -232,7 +238,8 @@ export async function restoreSnapshot(now = new Date()) {
         capsules: capsules.length,
         achievements: nextAchievements.length,
         knowledge: knowledge.length,
-        personas: personas.length
+        personas: personas.length,
+        dialogues: dialogues.length
       }
     }
   })
@@ -267,7 +274,14 @@ export async function clearAllData(now = new Date()) {
       // 知识库与分身一并清空：它们属于「用户数据」，而这里说的是「全部」。
       // 同样受快照保护，随时可以回滚。
       [KEY.knowledge, []],
-      [KEY.personas, []]
+      [KEY.personas, []],
+      [KEY.dialogues, []]
+      // **刻意不动 KEY.aiConfig**：
+      // 1. 它不属于「用户数据」（见 storage/keys.js 里 KEY.aiConfig 的说明），
+      //    而这里清的是用户数据；
+      // 2. 快照存的是 readAll() 的结果，而 readAll() 不含它——真清掉就回滚不回来了，
+      //    而对话框上写着「操作前会自动保存快照，之后可以回滚」；
+      // 3. 要删 Key，设置页的 AI 配置那一节有明确的「清除配置」按钮。
     ])
     // 刻意**不写** KEY.meta：它描述的是本地环境状态（schemaVersion、示例内容写过没有），
     // 不属于用户数据，与 data 的分区定义一致（见 storage/keys.js）。

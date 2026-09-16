@@ -15,11 +15,14 @@ import * as taskRepo from './taskRepo.js'
 import * as capsuleRepo from './capsuleRepo.js'
 import * as knowledgeRepo from './knowledgeRepo.js'
 import * as personaRepo from './personaRepo.js'
+import * as chatRepo from './chatRepo.js'
+import * as aiRepo from './aiRepo.js'
 import * as demoRepo from './demoRepo.js'
 import * as achievementRepo from './achievementRepo.js'
 import * as profileRepo from './profileRepo.js'
 import { runMaintenance } from './maintenance.js'
 import { TASK_STATUS, CAPSULE_STATUS, ACHIEVEMENT_TYPE } from '../domain/constants.js'
+import { DIALOGUE_ROLE } from '../domain/chat.js'
 
 beforeEach(() => {
   // 每个用例一份干净的内存存储，用例之间互不影响
@@ -30,6 +33,17 @@ beforeEach(() => {
 async function grantedValues(type) {
   const all = await achievementRepo.list()
   return all.filter((item) => item.type === type).map((item) => item.value)
+}
+
+/**
+ * 建一个**真实存在**的分身（至少要引用一篇材料）。
+ *
+ * 对话那几条用例必须用它而不是随手写个 id：`chatRepo.appendTurn` 落盘前会
+ * 重新确认分身还在，假 id 会被正确地拒掉。
+ */
+async function makePersona(name = '那时的我') {
+  const doc = await knowledgeRepo.create({ title: `${name}的材料`, content: '我喜欢在清晨跑步。' })
+  return personaRepo.create({ name, selfDate: '2026-09-01', docIds: [doc.id] })
 }
 
 describe('任务的增删改查', () => {
@@ -499,5 +513,197 @@ describe('示例内容的写入与清空', () => {
       await personaRepo.remove(persona.id)
     }
     expect((await demoRepo.state()).active).toBe(false)
+  })
+})
+
+describe('对话记录', () => {
+  it('追加一轮对话会一次写入两条', async () => {
+    const { user, ai } = await chatRepo.appendTurn({
+      capsuleId: 'c1',
+      message: '在吗',
+      reply: '在的',
+      emotionTag: 'calm'
+    })
+
+    expect(await chatRepo.loadDialogues()).toHaveLength(2)
+    expect(user.role).toBe(DIALOGUE_ROLE.USER)
+    expect(user.emotionTag).toBe('calm')
+    // AI 那条不该有情绪标签：它只打在用户说的话上
+    expect(ai.emotionTag).toBeNull()
+    expect(ai.content).toBe('在的')
+  })
+
+  it('分身的 AI 角色是 ai_persona（一条记录自己就能说清它在扮演谁）', async () => {
+    const persona = await makePersona()
+    const { ai } = await chatRepo.appendTurn({ personaId: persona.id, message: '你好', reply: '嗯' })
+    expect(ai.role).toBe(DIALOGUE_ROLE.PERSONA)
+  })
+
+  it('两个对象的历史互不串台', async () => {
+    const persona = await makePersona()
+    await chatRepo.appendTurn({ capsuleId: 'c1', message: '给胶囊', reply: '收到' })
+    await chatRepo.appendTurn({ personaId: persona.id, message: '给分身', reply: '在' })
+
+    const capsuleHistory = await chatRepo.history({ capsuleId: 'c1' })
+    const personaHistory = await chatRepo.history({ personaId: persona.id })
+    expect(capsuleHistory.map((item) => item.content)).toEqual(['给胶囊', '收到'])
+    expect(personaHistory.map((item) => item.content)).toEqual(['给分身', '在'])
+  })
+
+  it('按时间正序返回（对话要从上往下读）', async () => {
+    await chatRepo.appendTurn({ capsuleId: 'c1', message: '第一句', reply: '第一答' })
+    await chatRepo.appendTurn({ capsuleId: 'c1', message: '第二句', reply: '第二答' })
+    const list = await chatRepo.history({ capsuleId: 'c1' })
+    expect(list[0].content).toBe('第一句')
+    expect(list[3].content).toBe('第二答')
+  })
+
+  it('清空只影响这一个对象', async () => {
+    const persona = await makePersona()
+    await chatRepo.appendTurn({ capsuleId: 'c1', message: 'A', reply: 'a' })
+    await chatRepo.appendTurn({ personaId: persona.id, message: 'B', reply: 'b' })
+
+    expect(await chatRepo.removeByTarget({ capsuleId: 'c1' })).toBe(2)
+    expect(await chatRepo.history({ capsuleId: 'c1' })).toEqual([])
+    expect(await chatRepo.history({ personaId: persona.id })).toHaveLength(2)
+  })
+
+  it('清空是逻辑删除：记录仍在存储里，备份要带上它', async () => {
+    await chatRepo.appendTurn({ capsuleId: 'c1', message: 'A', reply: 'a' })
+    await chatRepo.removeByTarget({ capsuleId: 'c1' })
+    expect(await chatRepo.loadDialogues()).toHaveLength(2)
+    expect((await chatRepo.loadDialogues())[0].deleted).toBe(1)
+  })
+
+  it('清空一个没有对话的对象是安全的（不会误删别人）', async () => {
+    await chatRepo.appendTurn({ capsuleId: 'c1', message: 'A', reply: 'a' })
+    expect(await chatRepo.removeByTarget({ capsuleId: 'nope' })).toBe(0)
+    expect(await chatRepo.history({ capsuleId: 'c1' })).toHaveLength(2)
+  })
+})
+
+describe('删分身时连它的对话一起删', () => {
+  it('分身没了，跟它的对话也没了', async () => {
+    const persona = await makePersona('九月的我')
+    await chatRepo.appendTurn({ personaId: persona.id, message: '在吗', reply: '在的' })
+
+    await personaRepo.remove(persona.id)
+
+    expect(await chatRepo.history({ personaId: persona.id })).toEqual([])
+    // 存储里仍有墓碑——它要进备份，合并时靠 updatedAt 压住更旧的那份
+    const raw = await chatRepo.loadDialogues()
+    expect(raw).toHaveLength(2)
+    expect(raw.every((item) => item.deleted === 1)).toBe(true)
+    expect(raw[0].updatedAt).toBeTruthy()
+  })
+
+  it('不会牵连别的分身的对话', async () => {
+    const keep = await makePersona('八月的我')
+    const drop = await makePersona('七月的我')
+    await chatRepo.appendTurn({ personaId: keep.id, message: '留下', reply: '好' })
+    await chatRepo.appendTurn({ personaId: drop.id, message: '删掉', reply: '嗯' })
+
+    await personaRepo.remove(drop.id)
+
+    expect(await chatRepo.history({ personaId: keep.id })).toHaveLength(2)
+    expect(await chatRepo.history({ personaId: drop.id })).toEqual([])
+  })
+
+  it('**发送途中**分身被删掉：回复不会再写进去（那会变成一条没人能到达的记录）', async () => {
+    // 模型回复可能要等上一分钟，这期间用户完全可能在另一个标签页里删掉这个分身。
+    // 落盘前会重新确认一次，所以这条 appendTurn 应当被拒。
+    const persona = await makePersona('刚被删掉的我')
+    await personaRepo.remove(persona.id)
+
+    await expect(
+      chatRepo.appendTurn({ personaId: persona.id, message: '在吗', reply: '在的' })
+    ).rejects.toThrow('分身不存在')
+
+    expect(await chatRepo.loadDialogues()).toHaveLength(0)
+  })
+})
+
+describe('清空示例也清示例分身名下的对话', () => {
+  const SEEDED_AT = new Date(2026, 8, 15, 10, 0, 0)
+
+  it('示例分身和它的对话一起消失', async () => {
+    await demoRepo.seedIfNeeded('zh-CN', SEEDED_AT)
+    const [persona] = await personaRepo.list()
+    expect(persona).toBeTruthy()
+
+    await chatRepo.appendTurn({ personaId: persona.id, message: '在吗', reply: '在的' })
+    await demoRepo.clear()
+
+    expect(await personaRepo.list()).toHaveLength(0)
+    expect(await chatRepo.history({ personaId: persona.id })).toEqual([])
+    // 墓碑留着：备份合并时靠它压住更旧的那一份，免得示例数据被复活
+    const raw = await chatRepo.loadDialogues()
+    expect(raw).toHaveLength(2)
+    expect(raw.every((item) => item.deleted === 1)).toBe(true)
+  })
+
+  it('不会碰到用户自己建的对话', async () => {
+    await demoRepo.seedIfNeeded('zh-CN', SEEDED_AT)
+    const own = await makePersona('我自己建的')
+    await chatRepo.appendTurn({ personaId: own.id, message: '留下', reply: '好' })
+
+    await demoRepo.clear()
+
+    expect(await chatRepo.history({ personaId: own.id })).toHaveLength(2)
+  })
+})
+
+describe('AI 配置', () => {
+  it('没配过时是 null', async () => {
+    expect(await aiRepo.loadConfig()).toBeNull()
+  })
+
+  it('保存后能读回来', async () => {
+    await aiRepo.saveConfig({ provider: 'deepseek', model: 'deepseek-chat', apiKey: 'sk-abc' })
+    const config = await aiRepo.loadConfig()
+    expect(config.provider).toBe('deepseek')
+    expect(config.model).toBe('deepseek-chat')
+    expect(config.apiKey).toBe('sk-abc')
+  })
+
+  it('留空的字段沿用已保存的值（页面不回填 Key，靠的就是这条）', async () => {
+    await aiRepo.saveConfig({ provider: 'deepseek', model: 'deepseek-chat', apiKey: 'sk-abc' })
+    // 用户只改了模型，Key 那一栏是空的——不能把已经存好的 Key 抹掉
+    const saved = await aiRepo.saveConfig({ provider: 'deepseek', model: 'deepseek-reasoner' })
+    expect(saved.apiKey).toBe('sk-abc')
+    expect(saved.model).toBe('deepseek-reasoner')
+  })
+
+  it('填了新 Key 就覆盖旧的', async () => {
+    await aiRepo.saveConfig({ provider: 'deepseek', apiKey: 'sk-old' })
+    const saved = await aiRepo.saveConfig({ apiKey: 'sk-new' })
+    expect(saved.apiKey).toBe('sk-new')
+  })
+
+  it('允许存半成品（先选供应商，回头再申请 Key）', async () => {
+    const saved = await aiRepo.saveConfig({ provider: 'openai' })
+    expect(saved.provider).toBe('openai')
+    expect(saved.apiKey).toBe('')
+    expect(await aiRepo.loadConfig()).not.toBeNull()
+  })
+
+  it('不认识的供应商被清空，而不是原样存下来', async () => {
+    const saved = await aiRepo.saveConfig({ provider: 'https://evil.example.com', apiKey: 'sk-x' })
+    expect(saved.provider).toBe('')
+  })
+
+  it('resolveConfig 只合成、不落盘（「测试连接」要用它）', async () => {
+    await aiRepo.saveConfig({ provider: 'deepseek', model: 'deepseek-chat', apiKey: 'sk-saved' })
+    const merged = await aiRepo.resolveConfig({ provider: 'openai' })
+    expect(merged.provider).toBe('openai')
+    expect(merged.apiKey).toBe('sk-saved')
+    // 存储里那份没被动过
+    expect((await aiRepo.loadConfig()).provider).toBe('deepseek')
+  })
+
+  it('清除之后回到 null', async () => {
+    await aiRepo.saveConfig({ provider: 'deepseek', apiKey: 'sk-abc' })
+    await aiRepo.clearConfig()
+    expect(await aiRepo.loadConfig()).toBeNull()
   })
 })

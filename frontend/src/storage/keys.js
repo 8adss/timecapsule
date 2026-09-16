@@ -39,6 +39,27 @@ export const KEY = Object.freeze({
    */
   personas: `${NS}:personas`,
   /**
+   * 与「过去的你」（胶囊）和「何时的自己」（分身）的对话记录。
+   * 同样不必升 SCHEMA_VERSION，老备份里没有这个键就按空数组处理。
+   */
+  dialogues: `${NS}:dialogues`,
+  /**
+   * AI 配置：供应商、模型，以及**用户自己的 API Key**。
+   *
+   * **刻意不属于「用户数据」**，理由比 snapshot 那条更硬：
+   * 备份文件是拿来拷来拷去的（网盘、U 盘、发给朋友、贴进 issue），
+   * 把密钥写进去就是个陷阱——用户不会意识到自己刚把 Key 分享出去了。
+   * 所以它不进 DATA_KEYS，导出备份时不含它，换设备要重新填一次。
+   *
+   * 它进了 ALL_KEYS，于是底层的 `clearAll()`（把本应用写过的键全部删掉）会连它一起清。
+   *
+   * ⚠️ 但**设置页的「清空全部数据」不动它**（`backupRepo.clearAllData`）：
+   * 那一步清的是用户数据，而它按上面的定义不是；而且快照里也没有它，
+   * 真清掉就回滚不回来了——对话框上却写着「可以回滚」。
+   * 要删 Key，设置页的 AI 配置那一节有明确的「清除配置」按钮。
+   */
+  aiConfig: `${NS}:aiConfig`,
+  /**
    * 导入 / 清空前的自动快照，用于一键回滚。
    *
    * **刻意不属于「用户数据」**：它是一次破坏性操作前的自救副本，
@@ -59,8 +80,22 @@ export const DATA_KEYS = Object.freeze([
   KEY.settings,
   // 知识库必须在这里，否则导出备份时会静默漏掉它——
   // 而它恰恰是用户最舍不得丢的那份数据（自己写的日记、自我介绍）。
-  KEY.knowledge
+  KEY.knowledge,
+  // 「我的分身」同理：手写了几百字的画像，丢了没法重建。
+  KEY.personas,
+  // 对话记录也是「用户数据」：和那时的自己说过的话，丢了同样找不回来。
+  // **但用户的 API Key 不在此列**，见 KEY.aiConfig 的说明。
+  KEY.dialogues
 ])
 
-/** 本应用会写入的全部键，用于清空与整体导出。 */
-export const ALL_KEYS = Object.freeze([KEY.meta, ...DATA_KEYS, KEY.snapshot])
+/**
+ * 本应用会写入的全部键。
+ *
+ * 用于两件事，**都不是「导出备份」**：
+ * - `clearAll()`：本机全量重置，所以连 `aiConfig`（含密钥）也一起清；
+ * - `dumpAll()`：调试用的全量转储。
+ *
+ * ⚠️ **不要拿 `dumpAll()` 的结果当备份文件给用户下载**——它会带上用户的 API Key。
+ * 面向用户的导出走 `repository/backupRepo.js`，以 `DATA_KEYS` 为准。
+ */
+export const ALL_KEYS = Object.freeze([KEY.meta, ...DATA_KEYS, KEY.snapshot, KEY.aiConfig])

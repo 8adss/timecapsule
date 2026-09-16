@@ -63,14 +63,13 @@ const COLLAPSE_KEY = 'timecapsule.sidebarCollapsed'
 
 // 导航项。标签存的是 i18n 的键而不是文案——路由表与这层配置在启动时就固定了，
 // 写死中文的话切换语言不会生效。路径带 `/app` 前缀：`/` 留给官网落地页。
-// 知识库与我的分身都已经接回来了（改造后它们只依赖本地存储，不再需要 AI）。
-// 仍未接回的是对话页——它必须调大模型；图标（chat）在 NavIcon 里早已备好，
-// 等那一步做完加一行即可。
+// 三个原本依赖后端的功能页现在全部到齐：知识库、我的分身、对话（只有它会出网）。
 const navItems = [
   { path: '/app/tasks', label: 'nav.tasks', icon: 'task' },
   { path: '/app/capsules', label: 'nav.capsules', icon: 'capsule' },
   { path: '/app/knowledge', label: 'nav.knowledge', icon: 'knowledge' },
   { path: '/app/persona', label: 'nav.persona', icon: 'persona' },
+  { path: '/app/chat', label: 'nav.chat', icon: 'chat' },
   { path: '/app/profile', label: 'nav.profile', icon: 'achievement' },
   { path: '/app/settings', label: 'nav.settings', icon: 'settings' }
 ]

@@ -4,6 +4,8 @@ import vue from '@vitejs/plugin-vue'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
+// 线上由 Cloudflare Pages 执行的同一个函数（见 functions/api/ai.js）
+import { onRequest as aiFunction } from './functions/api/ai.js'
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
 
@@ -39,6 +41,59 @@ const DEV_PORT = 4113
  */
 const elementPlusResolver = () => ElementPlusResolver({ importStyle: false })
 
+/**
+ * 开发期把 `/api/ai` 交给**线上那同一个函数**执行。
+ *
+ * 这件事值得解释，因为它省掉了两个很麻烦的东西：
+ *
+ * 1. **不必装 wrangler、不必登录 Cloudflare**。`wrangler pages dev` 能本地跑函数，
+ *    但要装依赖、要过登录，对「改一行看一次」的开发循环太重。
+ * 2. **不会出现两份实现**。中间件不重写转发逻辑，而是直接 import
+ *    `functions/api/ai.js` 里的处理器——于是本地与线上跑的是同一份代码，
+ *    本地测通了，线上不该再出意外。dev 用的是真的 `fetch`，所以
+ *    **本地可以用真 Key 完整测一遍 AI 链路**，而不是只能等上线。
+ *
+ * 线上由 Cloudflare 的文件路由接管，这段只在 `vite dev` 时生效（`apply: 'serve'`），
+ * 不会进构建产物。
+ */
+const devAiFunctionPlugin = () => ({
+  name: 'dev-pages-function',
+  apply: 'serve',
+  configureServer(server) {
+    server.middlewares.use('/api/ai', async (req, res) => {
+      try {
+        const chunks = []
+        for await (const chunk of req) chunks.push(chunk)
+
+        const headers = new Headers()
+        for (const [name, value] of Object.entries(req.headers)) {
+          if (typeof value === 'string') headers.set(name, value)
+        }
+
+        // 用请求自带的 Host 拼 URL：浏览器可能访问的是 localhost 也可能是 127.0.0.1，
+        // 而函数里的同源校验比较的正是这个 host，写死会让其中一种访问方式被 403
+        const host = req.headers.host ?? `localhost:${DEV_PORT}`
+        const request = new Request(`http://${host}/api/ai`, {
+          method: req.method,
+          headers,
+          body: req.method === 'GET' || req.method === 'HEAD' ? undefined : Buffer.concat(chunks)
+        })
+
+        const response = await aiFunction({ request, env: {}, params: {} })
+        res.statusCode = response.status
+        response.headers.forEach((value, name) => res.setHeader(name, value))
+        res.end(Buffer.from(await response.arrayBuffer()))
+      } catch (error) {
+        res.statusCode = 500
+        res.setHeader('content-type', 'application/json; charset=utf-8')
+        res.end(JSON.stringify({
+          error: { code: 'dev_middleware_failed', detail: String(error?.message ?? error) }
+        }))
+      }
+    })
+  }
+})
+
 export default defineConfig({
   plugins: [
     vue(),
@@ -52,7 +107,9 @@ export default defineConfig({
      */
     AutoImport({ resolvers: [elementPlusResolver()], dts: true }),
     // 自动注册模板里用到的 <el-xxx> 组件
-    Components({ resolvers: [elementPlusResolver()], dts: true })
+    Components({ resolvers: [elementPlusResolver()], dts: true }),
+    // 开发期让 /api/ai 也能用（走线上那同一个函数）
+    devAiFunctionPlugin()
   ],
 
   // 应用内（设置页的「关于」）需要显示版本号，从 package.json 注入，避免两处手改
