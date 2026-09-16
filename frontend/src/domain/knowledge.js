@@ -19,7 +19,7 @@
  * 3. **正文不做 trim，原样存。** 用户贴进来的排版（段首空行、结尾换行）保留，
  *    只在判断「填没填」时按 trim 后是否为空来看。
  */
-import { DomainError, requireText } from './errors.js'
+import { DomainError, requireMaxLength, requireText } from './errors.js'
 import { newId } from './id.js'
 import { compareDateTime, nowDateTimeString } from './time.js'
 
@@ -101,10 +101,16 @@ export function buildPreview(content) {
 export function buildDoc(input, now = new Date()) {
   const timestamp = nowDateTimeString(now)
   const title = requireText(input.title, '请填写标题', { key: 'errors.knowledgeTitleRequired' })
+  requireMaxLength(title, KNOWLEDGE_LIMITS.title, `标题超过 ${KNOWLEDGE_LIMITS.title} 字上限`, {
+    key: 'errors.knowledgeTitleTooLong'
+  })
 
   if (typeof input.content !== 'string' || input.content.trim() === '') {
     throw new DomainError('正文不能为空', { key: 'errors.knowledgeContentRequired' })
   }
+  requireMaxLength(input.content, KNOWLEDGE_LIMITS.content, `正文超过 ${KNOWLEDGE_LIMITS.content} 字上限`, {
+    key: 'errors.knowledgeContentTooLong'
+  })
 
   return {
     id: newId(),
@@ -144,6 +150,9 @@ export function applyDocPatch(doc, patch, now = new Date()) {
   if ('title' in patch) {
     const title = patch.title
     if (typeof title === 'string' && title.trim() !== '') {
+      requireMaxLength(title.trim(), KNOWLEDGE_LIMITS.title, `标题超过 ${KNOWLEDGE_LIMITS.title} 字上限`, {
+        key: 'errors.knowledgeTitleTooLong'
+      })
       next.title = title.trim()
     }
   }
@@ -153,6 +162,9 @@ export function applyDocPatch(doc, patch, now = new Date()) {
     if (typeof content !== 'string' || content.trim() === '') {
       throw new DomainError('正文不能为空', { key: 'errors.knowledgeContentRequired' })
     }
+    requireMaxLength(content, KNOWLEDGE_LIMITS.content, `正文超过 ${KNOWLEDGE_LIMITS.content} 字上限`, {
+      key: 'errors.knowledgeContentTooLong'
+    })
     next.content = content
   }
 

@@ -14,6 +14,8 @@
       </div>
     </div>
 
+    <DemoBanner @cleared="load" />
+
     <el-card shadow="never">
       <div class="toolbar">
         <el-input
@@ -144,6 +146,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 // ElMessage / ElMessageBox 由 unplugin-auto-import 自动引入，见 vite.config.js
+import DemoBanner from '../components/DemoBanner.vue'
 import {
   buildPreview,
   countChars,

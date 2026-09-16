@@ -48,3 +48,29 @@ export function requireText(value, message, options) {
   }
   return value.trim()
 }
+
+/**
+ * 校验一段文本的长度上限，超了直接抛错。
+ *
+ * **为什么领域层也要管这件事**：界面上的 `maxlength` 只挡得住手输，
+ * 挡不住「读文件填进来」那条路径——`FileReader` 是直接赋值给表单的。
+ * 一旦超限的值落盘，导出备份时一切正常，**再导入回来却会被
+ * `domain/backup.js` 按上限拒收**。「存得进去、导不回来」是最难查的一类问题
+ * （用户会在换设备那天才发现），所以在写入这一侧就拦住。
+ *
+ * @param {unknown} value - 待校验的值，非字符串直接放行（交给别的校验器）
+ * @param {number} max - 允许的最大长度
+ * @param {string} message - 中文兜底描述
+ * @param {{ key?: string, params?: object }} [options] - 语言键与参数，会并入 { max }
+ * @returns {unknown} 原值
+ * @throws {DomainError} 超长时
+ */
+export function requireMaxLength(value, max, message, options) {
+  if (typeof value === 'string' && value.length > max) {
+    throw new DomainError(message, {
+      ...options,
+      params: { ...(options?.params ?? {}), max }
+    })
+  }
+  return value
+}

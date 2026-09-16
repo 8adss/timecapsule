@@ -1,15 +1,39 @@
-import request from './request'
+/**
+ * 「我的分身」接口。
+ *
+ * 与知识库那份同构：本地化之后这里不再是 HTTP 调用，而是转发到仓储层，
+ * 保留这一层的意义在于页面只依赖这几个函数名，将来接大模型或换存储时，
+ * 改动局限在本文件内部。
+ *
+ * 与旧版 API 的差异：
+ * - 不再有 `userId`（本地单用户）；
+ * - `regenerate` 暂不提供——它要调大模型，属于下一步；
+ * - 新增 `updatePersona`：画像与说话风格这一期由用户手写，就得能改。
+ */
+import { run } from './local'
+import * as personaRepo from '../repository/personaRepo'
 
-// 「自己的分身」接口：把知识库蒸馏成某个时间点的自己
-export const listPersonas = (userId) => request.get('/personas', { params: { userId } })
+/** 全部分身（排除已删除），按代表时间点由近及远。 */
+export const listPersonas = () => run(() => personaRepo.list())
 
-/** 详情里包含 persona 与它引用的文档；前端也用它轮询生成状态 */
-export const getPersona = (id, userId) => request.get(`/personas/${id}`, { params: { userId } })
+/** 新建分身。 */
+export const createPersona = (data) => run(() => personaRepo.create(data))
 
-export const createPersona = (data) => request.post('/personas', data)
+/** 修改分身：名称、代表时间点、引用材料、画像、说话风格。 */
+export const updatePersona = (id, data) => run(() => personaRepo.update(id, data))
 
-export const regeneratePersona = (id, userId) =>
-  request.post(`/personas/${id}/regenerate`, null, { params: { userId } })
+/** 删除一个分身（逻辑删除）。 */
+export const deletePersona = (id) => run(() => personaRepo.remove(id))
 
-export const deletePersona = (id, userId) =>
-  request.delete(`/personas/${id}`, { params: { userId } })
+/**
+ * 展示用纯函数，直接从领域层透出。
+ *
+ * 与 `api/knowledge.js` 同一个理由：页面的约定是只依赖 `api/` 与 `utils/`，
+ * 不直接引 `domain/`；而这几件事都是同步纯函数，走不了上面那些异步接口。
+ */
+export {
+  PERSONA_LIMITS,
+  PERSONA_STATUS,
+  resolveMaterials,
+  visiblePersonas
+} from '../domain/persona'

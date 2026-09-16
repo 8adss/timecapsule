@@ -12,12 +12,12 @@ const SITE_NAME = 'TimeCapsule'
  *   `/`      → LandingView（独立落地页，不带侧边栏）
  *   `/app/*` → AppShell（侧边栏外壳）→ 各功能页
  *
- * 知识库已经挂回来了（`/app/knowledge`）：它原本也走后端，但改造时换成了本地存储，
- * 一行 AI 代码都不需要——文档管理本来就是纯本地的活。
+ * 知识库与我的分身都已经挂回来了（`/app/knowledge`、`/app/persona`）：
+ * 它们原本也走后端，但改造时换成了本地存储，一行 AI 代码都不需要。
  *
- * **仍然未挂载**的是真正依赖 AI 能力的两个页面：
- *   - 与过去的自己对话、我的分身
- * 它们保留在仓库里（`.vue` 与 `src/api/` 模块都在），二期接回 AI 时再挂上；
+ * **仍然未挂载**的是真正依赖大模型的对话页：
+ *   - 与过去的自己对话
+ * 它保留在仓库里（`.vue` 与 `src/api/` 模块都在），接回 AI 时再挂上；
  * 在那之前不参与打包——Vite 只打包路由真正引用到的模块。
  *
  * 所有 `component` 都用动态 import：官网访客不会下载到应用外壳与功能页的代码，
@@ -39,6 +39,7 @@ const routes = [
       { path: 'tasks', component: () => import('../views/TaskView.vue'), meta: { title: 'route.tasks' } },
       { path: 'capsules', component: () => import('../views/CapsuleView.vue'), meta: { title: 'route.capsules' } },
       { path: 'knowledge', component: () => import('../views/KnowledgeView.vue'), meta: { title: 'route.knowledge' } },
+      { path: 'persona', component: () => import('../views/PersonaView.vue'), meta: { title: 'route.persona' } },
       { path: 'profile', component: () => import('../views/ProfileView.vue'), meta: { title: 'route.profile' } },
       { path: 'settings', component: () => import('../views/SettingsView.vue'), meta: { title: 'route.settings' } }
     ]
@@ -49,6 +50,7 @@ const routes = [
   { path: '/tasks', redirect: '/app/tasks' },
   { path: '/capsules', redirect: '/app/capsules' },
   { path: '/knowledge', redirect: '/app/knowledge' },
+  { path: '/persona', redirect: '/app/persona' },
   { path: '/profile', redirect: '/app/profile' },
   { path: '/settings', redirect: '/app/settings' },
 

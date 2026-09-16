@@ -32,6 +32,13 @@ export const KEY = Object.freeze({
    */
   knowledge: `${NS}:knowledge`,
   /**
+   * 「我的分身」：把知识库蒸馏成某个时间点的自己。
+   *
+   * 与 knowledge 一样，新增它不必升 SCHEMA_VERSION，老备份也照样能导入
+   * （data 里没有 personas 就按空数组处理）。
+   */
+  personas: `${NS}:personas`,
+  /**
    * 导入 / 清空前的自动快照，用于一键回滚。
    *
    * **刻意不属于「用户数据」**：它是一次破坏性操作前的自救副本，

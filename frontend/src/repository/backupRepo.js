@@ -41,16 +41,17 @@ export const IMPORT_MODE = Object.freeze({
 
 /**
  * 读取当前全部数据（按逻辑分区名，与备份文件的 data 字段一致）。
- * @returns {Promise<{profile: object|null, tasks: Array, capsules: Array, achievements: Array, settings: object, knowledge: Array}>}
+ * @returns {Promise<{profile: object|null, tasks: Array, capsules: Array, achievements: Array, settings: object, knowledge: Array, personas: Array}>}
  */
 export async function readAll() {
-  const [profile, tasks, capsules, achievements, settings, knowledge] = await Promise.all([
+  const [profile, tasks, capsules, achievements, settings, knowledge, personas] = await Promise.all([
     read(KEY.profile, null),
     read(KEY.tasks, []),
     read(KEY.capsules, []),
     read(KEY.achievements, []),
     read(KEY.settings, {}),
-    read(KEY.knowledge, [])
+    read(KEY.knowledge, []),
+    read(KEY.personas, [])
   ])
   return {
     profile: profile ?? null,
@@ -58,7 +59,8 @@ export async function readAll() {
     capsules: Array.isArray(capsules) ? capsules : [],
     achievements: Array.isArray(achievements) ? achievements : [],
     settings: settings && typeof settings === 'object' ? settings : {},
-    knowledge: Array.isArray(knowledge) ? knowledge : []
+    knowledge: Array.isArray(knowledge) ? knowledge : [],
+    personas: Array.isArray(personas) ? personas : []
   }
 }
 
@@ -146,7 +148,8 @@ export async function importBackup(raw, mode = IMPORT_MODE.MERGE, now = new Date
       [KEY.capsules, draft.capsules],
       [KEY.achievements, nextAchievements],
       [KEY.settings, draft.settings],
-      [KEY.knowledge, draft.knowledge]
+      [KEY.knowledge, draft.knowledge],
+      [KEY.personas, draft.personas]
     ])
 
     return {
@@ -156,7 +159,8 @@ export async function importBackup(raw, mode = IMPORT_MODE.MERGE, now = new Date
         tasks: draft.tasks.length,
         capsules: draft.capsules.length,
         achievements: nextAchievements.length,
-        knowledge: draft.knowledge.length
+        knowledge: draft.knowledge.length,
+        personas: draft.personas.length
       }
     }
   })
@@ -204,6 +208,7 @@ export async function restoreSnapshot(now = new Date()) {
     // 与其它集合在回滚下的语义保持一致（回滚 = 回到那个时点）。
     // 这不会让资料无声消失——回滚本身会先把**当前**数据存成新快照，误删再回滚一次即可取回。
     const knowledge = Array.isArray(restored.knowledge) ? restored.knowledge : []
+    const personas = Array.isArray(restored.personas) ? restored.personas : []
     const profile = restored.profile ?? await loadProfile(now)
 
     const { profile: nextProfile, achievements: nextAchievements } = reconcileWithinLock(
@@ -217,7 +222,8 @@ export async function restoreSnapshot(now = new Date()) {
       [KEY.capsules, capsules],
       [KEY.achievements, nextAchievements],
       [KEY.settings, restored.settings ?? {}],
-      [KEY.knowledge, knowledge]
+      [KEY.knowledge, knowledge],
+      [KEY.personas, personas]
     ])
 
     return {
@@ -225,7 +231,8 @@ export async function restoreSnapshot(now = new Date()) {
         tasks: tasks.length,
         capsules: capsules.length,
         achievements: nextAchievements.length,
-        knowledge: knowledge.length
+        knowledge: knowledge.length,
+        personas: personas.length
       }
     }
   })
@@ -257,9 +264,10 @@ export async function clearAllData(now = new Date()) {
       [KEY.capsules, []],
       [KEY.achievements, []],
       [KEY.settings, {}],
-      // 知识库一并清空：它属于「用户数据」，而这里说的是「全部」。
+      // 知识库与分身一并清空：它们属于「用户数据」，而这里说的是「全部」。
       // 同样受快照保护，随时可以回滚。
-      [KEY.knowledge, []]
+      [KEY.knowledge, []],
+      [KEY.personas, []]
     ])
   })
 }

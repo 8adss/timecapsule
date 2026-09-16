@@ -13,10 +13,12 @@ import 'element-plus/dist/index.css'
 import './styles/theme.css'
 import App from './App.vue'
 import router from './router'
-import { i18n } from './i18n'
+import { i18n, getLocale } from './i18n'
 import { useUserStore } from './stores/user'
 import { initStorage, ensureMeta } from './storage'
 import { runMaintenance, startMaintenanceLoop } from './repository/maintenance'
+// 仓储里叫 seedIfNeeded，这里起个别名让调用处一眼看出「写的是示例」
+import { seedIfNeeded as seedDemoIfNeeded } from './repository/demoRepo'
 
 const app = createApp(App)
 app.use(createPinia())
@@ -42,7 +44,11 @@ app.use(i18n)
  *    站点数据）时会降级到内存存储，此时**必须明确告知用户**，否则他会以为
  *    数据已经保存好了，关掉页面才发现全没了；
  * 2. `ensureMeta` —— 首次使用时写入 schemaVersion，供导入与迁移判断来源版本；
- * 3. `runMaintenance` —— 补跑「到期胶囊自动开启」与「逾期任务标记」，
+ * 3. `seedDemoIfNeeded` —— 首次打开时写入示例内容（示例文档 + 示例分身），
+ *    让空应用不至于只是一堆空表和引导文案。它自己判断该不该写：
+ *    从没写过示例、知识库为空、也没有任何分身——已经在用这两页的人不会被塞进来。
+ *    必须放在挂载之前，否则用户会先看到一瞬空列表再被填上；
+ * 4. `runMaintenance` —— 补跑「到期胶囊自动开启」与「逾期任务标记」，
  *    它们原本由后端每分钟的定时任务负责。
  *
  * 任何一步失败都照样挂载：空态页面远比白屏有用，而且用户能看到具体错误。
@@ -56,6 +62,13 @@ async function bootstrap() {
 
   try {
     await ensureMeta()
+
+    // 示例内容跟随首次打开时的界面语言。传语言而不是让领域层去问 i18n：
+    // 那两层必须保持零依赖，见 domain/demo.js 的说明。
+    const demo = await seedDemoIfNeeded(getLocale())
+    if (demo.seeded) {
+      console.info(`已写入示例内容：${demo.docs} 篇示例文档、${demo.personas} 个示例分身`)
+    }
 
     const maintenance = await runMaintenance()
     if (maintenance.failed.length > 0) {

@@ -13,6 +13,8 @@ import * as taskRepo from './taskRepo.js'
 import * as capsuleRepo from './capsuleRepo.js'
 import * as achievementRepo from './achievementRepo.js'
 import * as profileRepo from './profileRepo.js'
+import * as knowledgeRepo from './knowledgeRepo.js'
+import * as personaRepo from './personaRepo.js'
 import * as backupRepo from './backupRepo.js'
 import { BACKUP_FORMAT, BACKUP_FORMAT_VERSION } from '../domain/backup.js'
 import { ACHIEVEMENT_TYPE, CAPSULE_STATUS, TASK_STATUS } from '../domain/constants.js'
@@ -385,5 +387,87 @@ describe('清空后的状态是干净的', () => {
     await backupRepo.clearAllData()
     expect(await capsuleRepo.listOpened()).toHaveLength(0)
     expect(await achievementRepo.list()).toHaveLength(0)
+  })
+})
+
+describe('知识库与分身也在备份范围内', () => {
+  // 这两个集合是后加的，而 backupRepo 里的键列表是**硬编码**的
+  // （不是遍历 DATA_KEYS，见该文件里的说明）。漏掉任何一处，
+  // 用户导出备份时都会静默少一个集合——而它们恰恰是最舍不得丢的那份数据：
+  // 自己写的日记与自我介绍，以及手写了几百字的画像。
+  const ownDoc = { title: '关于我', content: '我是一名后端工程师', sourceType: 'PASTE' }
+  const ownPersona = (docIds) => ({
+    name: '那时的我',
+    selfDate: '2026-09-01',
+    docIds,
+    summary: '画像',
+    stylePrompt: '说话风格'
+  })
+
+  it('导出时带上两个集合与条数', async () => {
+    const created = await knowledgeRepo.create(ownDoc)
+    await personaRepo.create(ownPersona([created.id]))
+
+    const backup = await backupRepo.createBackup()
+    expect(backup.counts.knowledge).toBe(1)
+    expect(backup.counts.personas).toBe(1)
+    expect(backup.data.knowledge).toHaveLength(1)
+    expect(backup.data.personas).toHaveLength(1)
+  })
+
+  it('导出 → 清空 → 导入后都还在', async () => {
+    const created = await knowledgeRepo.create(ownDoc)
+    await personaRepo.create(ownPersona([created.id]))
+
+    const backup = await backupRepo.createBackup()
+    await backupRepo.clearAllData()
+    expect(await knowledgeRepo.list()).toHaveLength(0)
+    expect(await personaRepo.list()).toHaveLength(0)
+
+    await backupRepo.importBackup(JSON.parse(JSON.stringify(backup)), backupRepo.IMPORT_MODE.REPLACE)
+
+    const docs = await knowledgeRepo.list()
+    expect(docs).toHaveLength(1)
+    expect(docs[0].title).toBe('关于我')
+    expect(await personaRepo.list()).toHaveLength(1)
+  })
+
+  it('清空数据会把两个集合一起清掉', async () => {
+    const created = await knowledgeRepo.create(ownDoc)
+    await personaRepo.create(ownPersona([created.id]))
+
+    await backupRepo.clearAllData()
+
+    expect(await knowledgeRepo.list()).toHaveLength(0)
+    expect(await personaRepo.list()).toHaveLength(0)
+  })
+
+  it('回滚能把清空前的两个集合找回来', async () => {
+    const created = await knowledgeRepo.create(ownDoc)
+    await personaRepo.create(ownPersona([created.id]))
+
+    await backupRepo.clearAllData()
+    await backupRepo.restoreSnapshot()
+
+    expect(await knowledgeRepo.list()).toHaveLength(1)
+    expect(await personaRepo.list()).toHaveLength(1)
+  })
+
+  it('替换导入一份没有这两个集合的老备份时，它们被清空而不是留下残渣', async () => {
+    // 「替换」的语义是导入什么就是什么。若只覆盖文件里出现过的键，
+    // 用户以为换成了新设备的数据，实际还留着上一份的旧文档。
+    // 这一步是安全的：操作前会自动存快照，随时能滚回来（上一条用例就是它）。
+    await knowledgeRepo.create(ownDoc)
+
+    const old = {
+      format: BACKUP_FORMAT,
+      formatVersion: BACKUP_FORMAT_VERSION,
+      exportedAt: '2026-09-15T10:00:00.000Z',
+      data: { profile: null, tasks: [], capsules: [], achievements: [], settings: {} }
+    }
+    await backupRepo.importBackup(old, backupRepo.IMPORT_MODE.REPLACE)
+
+    expect(await knowledgeRepo.list()).toHaveLength(0)
+    expect(await personaRepo.list()).toHaveLength(0)
   })
 })

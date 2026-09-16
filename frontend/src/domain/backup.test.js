@@ -449,3 +449,124 @@ describe('知识库（后加的集合）', () => {
     expect(replaceData({}).data.knowledge).toEqual([])
   })
 })
+
+describe('分身（更晚加的集合）', () => {
+  const persona = (over = {}) => ({
+    id: 'p1',
+    name: '那时的我',
+    selfDate: '2026-09-01',
+    docIds: ['d1'],
+    summary: '画像',
+    stylePrompt: '说话风格',
+    status: 'READY',
+    failReason: null,
+    model: null,
+    deleted: 0,
+    createdAt: '2026-09-15 10:00:00',
+    updatedAt: '2026-09-15 10:00:00',
+    ...over
+  })
+
+  it('导出时带上分身与条数', () => {
+    const result = buildBackup({ personas: [persona()] })
+    expect(result.data.personas).toHaveLength(1)
+    expect(result.counts.personas).toBe(1)
+  })
+
+  it('缺失时补成空数组，而不是 undefined', () => {
+    expect(buildBackup({}).data.personas).toEqual([])
+    expect(buildBackup({}).counts.personas).toBe(0)
+  })
+
+  it('老备份（data 里没有 personas）照样能导入', () => {
+    // 与知识库同理：新增一个集合对旧文件是向后兼容的，formatVersion 不必升
+    expect(validateBackup(backup()).data.personas).toEqual([])
+  })
+
+  it('接受一个合法分身', () => {
+    const { data } = validateBackup(backup({ personas: [persona()] }))
+    expect(data.personas[0].name).toBe('那时的我')
+    expect(data.personas[0].status).toBe('READY')
+  })
+
+  it('拒绝非法的状态取值', () => {
+    expect(() => validateBackup(backup({ personas: [persona({ status: 'DONE' })] })))
+      .toThrow('data.personas[0].status')
+  })
+
+  it('拒绝缺失或格式不对的代表时间点', () => {
+    // 必须是纯日期：带上时分秒说明这份文件不是本应用产出的
+    expect(() => validateBackup(backup({ personas: [persona({ selfDate: null })] })))
+      .toThrow('data.personas[0].selfDate')
+    expect(() => validateBackup(backup({ personas: [persona({ selfDate: '2026-09-01 00:00:00' })] })))
+      .toThrow('不是合法的 yyyy-MM-dd 日期')
+  })
+
+  it('拒绝引用的材料不是数组', () => {
+    expect(() => validateBackup(backup({ personas: [persona({ docIds: 'd1' })] })))
+      .toThrow('data.personas[0].docIds 应为数组')
+  })
+
+  it('引用为空数组时拒绝（没有材料来源的分身不成立）', () => {
+    expect(() => validateBackup(backup({ personas: [persona({ docIds: [] })] })))
+      .toThrow('data.personas[0].docIds')
+  })
+
+  it('引用的材料被去重', () => {
+    const { data } = validateBackup(backup({ personas: [persona({ docIds: ['d1', 'd2', 'd1'] })] }))
+    expect(data.personas[0].docIds).toEqual(['d1', 'd2'])
+  })
+
+  it('拒绝超长名称', () => {
+    expect(() => validateBackup(backup({ personas: [persona({ name: 'x'.repeat(101) })] })))
+      .toThrow('超出上限')
+  })
+
+  it('画像与说话风格缺失时统一成空串（实体里用的就是空串）', () => {
+    const { data } = validateBackup(backup({ personas: [persona({ summary: null, stylePrompt: undefined })] }))
+    expect(data.personas[0].summary).toBe('')
+    expect(data.personas[0].stylePrompt).toBe('')
+  })
+
+  it('派生字段（材料数）不进导入结果', () => {
+    const { data } = validateBackup(backup({ personas: [persona({ docCount: 99 })] }))
+    expect(data.personas[0]).not.toHaveProperty('docCount')
+  })
+
+  it('拒绝重复的分身 id', () => {
+    expect(() => validateBackup(backup({ personas: [persona(), persona()] })))
+      .toThrow('与前面的条目重复')
+  })
+
+  it('合并：新增本地没有的分身', () => {
+    const { data, summary } = mergeData({ personas: [] }, { personas: [persona()] })
+    expect(data.personas).toHaveLength(1)
+    expect(summary.personasAdded).toBe(1)
+  })
+
+  it('合并：同 id 取 updatedAt 较新的那份', () => {
+    const mine = persona({ name: '旧画像' })
+    const theirs = persona({ name: '新画像', updatedAt: '2026-12-01 00:00:00' })
+    expect(mergeData({ personas: [mine] }, { personas: [theirs] }).data.personas[0].name)
+      .toBe('新画像')
+  })
+
+  it('合并：本机删掉的分身不会被旧备份复活', () => {
+    const tombstone = persona({ deleted: 1, updatedAt: '2026-12-01 00:00:00' })
+    const alive = persona({ updatedAt: '2026-09-15 10:00:00' })
+    expect(mergeData({ personas: [tombstone] }, { personas: [alive] }).data.personas[0].deleted).toBe(1)
+  })
+
+  it('合并时不校验引用的材料是否真的存在', () => {
+    // 被引用的文档可能已经被删掉了，那是正常状态（界面上显示「材料已删除」），
+    // 不该因为一份「引用已失效」的备份就让整次导入失败
+    const incoming = { personas: [persona({ docIds: ['早已不存在的文档'] })] }
+    expect(() => mergeData({ personas: [] }, incoming)).not.toThrow()
+  })
+
+  it('替换：带上导入的分身，缺失时清空', () => {
+    expect(replaceData({ personas: [persona()] }).data.personas).toHaveLength(1)
+    expect(replaceData({ personas: [persona()] }).summary.personasAdded).toBe(1)
+    expect(replaceData({}).data.personas).toEqual([])
+  })
+})

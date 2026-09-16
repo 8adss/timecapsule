@@ -2,234 +2,276 @@
   <div class="page">
     <div class="page-head">
       <div>
-        <h1 class="page-title">我的分身</h1>
-        <p class="page-desc">把知识库里的个人资料蒸馏成「某个时间点的自己」，之后就可以选择和那时的你对话</p>
+        <h1 class="page-title">{{ t('persona.title') }}</h1>
+        <p class="page-desc">{{ t('persona.desc') }}</p>
       </div>
       <div class="page-actions">
-        <el-button @click="$router.push('/knowledge')">去知识库</el-button>
-        <el-button type="primary" @click="openCreate">创建分身</el-button>
+        <el-button @click="router.push('/app/knowledge')">{{ t('persona.goKnowledge') }}</el-button>
+        <el-button type="primary" @click="openCreate">{{ t('persona.create') }}</el-button>
       </div>
     </div>
 
-    <el-empty
-      v-if="!loading && personas.length === 0"
-      description="还没有分身。先在知识库导入几篇你写的文字，再回来创建一个"
-    />
+    <DemoBanner @cleared="reloadAll" />
 
-    <el-card v-for="p in personas" :key="p.id" class="persona-card" shadow="never">
+    <el-empty v-if="!loading && personas.length === 0" :description="t('persona.empty')" />
+
+    <el-card v-for="item in personas" :key="item.id" class="persona-card" shadow="never">
       <template #header>
         <div class="persona-head">
           <div class="persona-title">
-            <span class="name">{{ p.name }}</span>
-            <span class="date">代表 {{ p.selfDate }} 的我</span>
+            <span class="name">{{ item.name }}</span>
+            <span class="date">{{ t('persona.detailDate', { date: item.selfDate }) }}</span>
           </div>
-          <div class="tags">
-            <el-tag :type="statusMeta(p.status).type" effect="light">
-              {{ statusMeta(p.status).text }}
-            </el-tag>
-            <el-tag type="info" effect="plain" size="small">{{ p.docCount }} 篇材料</el-tag>
-          </div>
+          <el-tag type="info" effect="plain" size="small">
+            {{ t('persona.materialCount', { n: item.docIds.length }) }}
+          </el-tag>
         </div>
       </template>
 
-      <!-- 生成中：显示进度提示 -->
-      <div v-if="p.status === 'GENERATING'" class="state-box generating">
-        <el-icon class="is-loading"><Loading /></el-icon>
-        正在阅读你的材料并蒸馏画像，通常需要 10~60 秒，页面会自动刷新…
-      </div>
+      <div class="section-label">{{ t('persona.summaryLabel') }}</div>
+      <p v-if="item.summary" class="summary">{{ item.summary }}</p>
+      <p v-else class="placeholder">{{ t('persona.noSummary') }}</p>
 
-      <!-- 生成失败：显示原因 + 重试 -->
-      <div v-else-if="p.status === 'FAILED'" class="state-box failed">
-        <div class="fail-title">生成失败</div>
-        <div class="fail-reason">{{ p.failReason || '未知原因' }}</div>
-        <div class="fail-tip">
-          常见原因：AI 模型还没配置（去「设置」页填写 Key）、Key 余额不足、端点或模型名不对。
-        </div>
-      </div>
-
-      <!-- 就绪：显示画像 -->
-      <div v-else-if="p.status === 'READY'">
-        <div class="section-label">画像</div>
-        <p class="summary">{{ p.summary }}</p>
-        <div class="section-label">说话风格</div>
-        <p class="style">{{ p.stylePrompt }}</p>
-      </div>
+      <div class="section-label">{{ t('persona.styleLabel') }}</div>
+      <p v-if="item.stylePrompt" class="style">{{ item.stylePrompt }}</p>
+      <p v-else class="placeholder">{{ t('persona.noStyle') }}</p>
 
       <template #footer>
-        <el-button v-if="p.status === 'READY'" type="primary" @click="goChat(p)">
-          和那时的我对话
-        </el-button>
-        <el-button v-else-if="p.status === 'FAILED'" type="primary" @click="doRegenerate(p)">
-          重新生成
-        </el-button>
-        <el-button @click="openDetail(p)">查看详情</el-button>
-        <el-popconfirm title="确定删除这个分身吗？" @confirm="doDelete(p)">
+        <el-button type="primary" @click="goChat">{{ t('persona.chat') }}</el-button>
+        <el-button @click="openDetail(item)">{{ t('persona.detail') }}</el-button>
+        <el-button @click="openEdit(item)">{{ t('persona.edit') }}</el-button>
+        <el-popconfirm :title="t('persona.deleteConfirm')" @confirm="doDelete(item)">
           <template #reference>
-            <el-button type="danger" plain>删除</el-button>
+            <el-button type="danger" plain>{{ t('persona.delete') }}</el-button>
           </template>
         </el-popconfirm>
       </template>
     </el-card>
 
-    <!-- 创建分身 -->
-    <el-dialog v-model="dialogVisible" title="创建分身" width="600px">
-      <el-form label-width="110px">
-        <el-form-item label="分身名称" required>
-          <el-input v-model="form.name" placeholder="例如：2026 年 9 月的我" maxlength="100" />
+    <!-- 新建与编辑共用一个弹窗：字段完全一样，差别只在标题与提交时调哪个接口 -->
+    <el-dialog
+      v-model="dialogVisible"
+      :title="isEdit ? t('persona.edit') : t('persona.create')"
+      width="680px"
+    >
+      <el-form label-width="96px">
+        <el-form-item :label="t('persona.nameLabel')" required>
+          <el-input
+            v-model="form.name"
+            :placeholder="t('persona.namePlaceholder')"
+            :maxlength="LIMITS.name"
+          />
         </el-form-item>
-        <el-form-item label="代表时间点" required>
+
+        <el-form-item :label="t('persona.selfDateLabel')" required>
           <el-date-picker
             v-model="form.selfDate"
             type="date"
             value-format="YYYY-MM-DD"
-            placeholder="这个分身代表哪个时候的你"
+            :placeholder="t('persona.selfDatePlaceholder')"
             style="width: 100%"
           />
-          <div class="tip">同一个人的不同时期，性格和在意的事会很不一样，所以时间点要选准</div>
+          <div class="tip">{{ t('persona.selfDateTip') }}</div>
         </el-form-item>
-        <el-form-item label="引用材料" required>
+
+        <el-form-item :label="t('persona.docsLabel')" required>
           <el-select
             v-model="form.docIds"
             multiple
             collapse-tags
             collapse-tags-tooltip
-            placeholder="选择知识库里的文档"
+            :placeholder="t('persona.docsPlaceholder')"
             style="width: 100%"
           >
-            <el-option v-for="d in docs" :key="d.id" :label="d.title" :value="d.id" />
+            <el-option v-for="doc in docs" :key="doc.id" :label="doc.title" :value="doc.id" />
           </el-select>
-          <div class="tip">
-            至少要选一篇。选得越贴近那个时间点的你，生成的人设越准（当前知识库 {{ docs.length }} 篇）
-          </div>
+          <div class="tip">{{ t('persona.docsTip', { n: docs.length }) }}</div>
+        </el-form-item>
+
+        <el-form-item :label="t('persona.summaryLabel')">
+          <el-input
+            v-model="form.summary"
+            type="textarea"
+            :rows="5"
+            :maxlength="LIMITS.summary"
+            show-word-limit
+            :placeholder="t('persona.summaryPlaceholder')"
+          />
+        </el-form-item>
+
+        <el-form-item :label="t('persona.styleLabel')">
+          <el-input
+            v-model="form.stylePrompt"
+            type="textarea"
+            :rows="5"
+            :maxlength="LIMITS.stylePrompt"
+            show-word-limit
+            :placeholder="t('persona.stylePlaceholder')"
+          />
         </el-form-item>
       </el-form>
+
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="doCreate">开始生成</el-button>
+        <el-button @click="dialogVisible = false">{{ t('persona.cancel') }}</el-button>
+        <el-button type="primary" :loading="submitting" @click="doSubmit">
+          {{ isEdit ? t('persona.save') : t('persona.submitCreate') }}
+        </el-button>
       </template>
     </el-dialog>
 
     <!-- 详情 -->
-    <el-dialog v-model="detailVisible" :title="detail?.persona?.name || '分身详情'" width="680px">
+    <el-dialog v-model="detailVisible" :title="detail?.name || t('persona.detail')" width="680px">
       <template v-if="detail">
-        <div class="detail-meta">
-          代表 {{ detail.persona.selfDate }} 的我
-          <span v-if="detail.persona.model">· 由 {{ detail.persona.model }} 生成</span>
-        </div>
-        <div class="section-label">画像</div>
-        <p class="summary">{{ detail.persona.summary || '（无）' }}</p>
-        <div class="section-label">说话风格</div>
-        <p class="style">{{ detail.persona.stylePrompt || '（无）' }}</p>
-        <div class="section-label">引用的材料</div>
-        <el-tag v-for="d in detail.docs" :key="d.id" class="doc-tag" effect="plain">
-          {{ d.title }}（{{ d.charCount }} 字）
-        </el-tag>
+        <div class="detail-meta">{{ t('persona.detailDate', { date: detail.selfDate }) }}</div>
+
+        <div class="section-label">{{ t('persona.summaryLabel') }}</div>
+        <p v-if="detail.summary" class="summary">{{ detail.summary }}</p>
+        <p v-else class="placeholder">{{ t('persona.noSummary') }}</p>
+
+        <div class="section-label">{{ t('persona.styleLabel') }}</div>
+        <p v-if="detail.stylePrompt" class="style">{{ detail.stylePrompt }}</p>
+        <p v-else class="placeholder">{{ t('persona.noStyle') }}</p>
+
+        <div class="section-label">{{ t('persona.materialsLabel') }}</div>
+        <template v-for="material in materials" :key="material.id">
+          <el-tag v-if="!material.missing" class="doc-tag" effect="plain">
+            {{ material.doc.title }}
+          </el-tag>
+          <el-tag v-else class="doc-tag" type="danger" effect="plain">
+            {{ t('persona.materialMissing') }}
+          </el-tag>
+        </template>
+        <div class="tip">{{ t('persona.materialsTip') }}</div>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Loading } from '@element-plus/icons-vue'
-import { createPersona, deletePersona, getPersona, listPersonas, regeneratePersona } from '../api/persona'
+import { useI18n } from 'vue-i18n'
+// ElMessage / ElMessageBox 由 unplugin-auto-import 自动引入，见 vite.config.js
+import DemoBanner from '../components/DemoBanner.vue'
 import { listDocs } from '../api/knowledge'
-import { useUserStore } from '../stores/user'
+import {
+  createPersona,
+  deletePersona,
+  listPersonas,
+  PERSONA_LIMITS as LIMITS,
+  resolveMaterials,
+  updatePersona
+} from '../api/persona'
+import { toDateTimeString } from '../utils/date'
 
-const userStore = useUserStore()
+const { t } = useI18n()
 const router = useRouter()
 
 const personas = ref([])
 const docs = ref([])
 const loading = ref(false)
 const submitting = ref(false)
+
 const dialogVisible = ref(false)
 const detailVisible = ref(false)
 const detail = ref(null)
+/** 正在编辑的那一个的 id；为空表示这是「新建」 */
+const editingId = ref('')
 
-const form = reactive({ name: '', selfDate: '', docIds: [] })
+const form = reactive({ name: '', selfDate: '', docIds: [], summary: '', stylePrompt: '' })
 
-const STATUS = {
-  DRAFT: { text: '草稿', type: 'info' },
-  GENERATING: { text: '生成中', type: 'warning' },
-  READY: { text: '已就绪', type: 'success' },
-  FAILED: { text: '生成失败', type: 'danger' }
-}
-const statusMeta = (status) => STATUS[status] || { text: status || '未知', type: 'info' }
+const isEdit = computed(() => editingId.value !== '')
 
-let timer = null
+/**
+ * 详情里的引用材料。
+ * 找不到的文档会保留位置并标成「材料已删除」，而不是悄悄少一行——
+ * 用户得看出「原本引用了 3 篇，其中 1 篇不在了」。
+ */
+const materials = computed(() => (detail.value ? resolveMaterials(detail.value, docs.value) : []))
 
-const stopPolling = () => {
-  if (timer) {
-    clearInterval(timer)
-    timer = null
-  }
-}
-
-/** 有分身还在生成中时，每 2.5 秒刷新一次列表；全部就绪后自动停止 */
-const startPolling = () => {
-  if (timer) return
-  timer = setInterval(async () => {
-    if (!personas.value.some((p) => p.status === 'GENERATING')) {
-      stopPolling()
-      return
-    }
-    await load()
-  }, 2500)
-}
+/** 表单里代表时间点的默认值。用本地时间，不能用 toISOString（那是 UTC，东八区半夜会差一天）。 */
+const today = () => toDateTimeString(new Date()).slice(0, 10)
 
 const load = async () => {
   loading.value = true
   try {
-    personas.value = await listPersonas(userStore.userId)
-    if (personas.value.some((p) => p.status === 'GENERATING')) {
-      startPolling()
-    }
+    personas.value = await listPersonas()
   } finally {
     loading.value = false
   }
 }
 
 const loadDocs = async () => {
-  docs.value = await listDocs(userStore.userId)
+  docs.value = await listDocs()
+}
+
+/** 清空示例之后两边都要重来：引用的材料没了，材料数也会变 */
+const reloadAll = async () => {
+  await Promise.all([load(), loadDocs()])
 }
 
 const openCreate = async () => {
   await loadDocs()
   if (docs.value.length === 0) {
-    ElMessage.warning('知识库还是空的，先去导入几篇你写过的文字')
+    ElMessage.warning(t('persona.emptyKnowledge'))
     return
   }
+  editingId.value = ''
   form.name = ''
-  form.selfDate = new Date().toISOString().slice(0, 10)
+  form.selfDate = today()
   form.docIds = []
+  form.summary = ''
+  form.stylePrompt = ''
   dialogVisible.value = true
 }
 
-const doCreate = async () => {
+const openEdit = async (item) => {
+  await loadDocs()
+  editingId.value = item.id
+  form.name = item.name
+  form.selfDate = item.selfDate
+  form.docIds = [...item.docIds]
+  form.summary = item.summary
+  form.stylePrompt = item.stylePrompt
+  dialogVisible.value = true
+}
+
+const openDetail = (item) => {
+  detail.value = item
+  detailVisible.value = true
+}
+
+const doSubmit = async () => {
   if (!form.name.trim()) {
-    ElMessage.warning('请填写分身名称')
+    ElMessage.warning(t('persona.errName'))
     return
   }
   if (!form.selfDate) {
-    ElMessage.warning('请选择代表的时间点')
+    ElMessage.warning(t('persona.errSelfDate'))
     return
   }
   if (form.docIds.length === 0) {
-    ElMessage.warning('至少选择一篇材料')
+    ElMessage.warning(t('persona.errDocs'))
     return
   }
+
   submitting.value = true
   try {
-    await createPersona({
-      userId: userStore.userId,
-      name: form.name.trim(),
+    const payload = {
+      name: form.name,
       selfDate: form.selfDate,
-      docIds: form.docIds
-    })
-    ElMessage.success('已开始生成，稍等十几秒')
+      docIds: form.docIds,
+      summary: form.summary,
+      stylePrompt: form.stylePrompt
+    }
+
+    if (isEdit.value) {
+      await updatePersona(editingId.value, payload)
+      ElMessage.success(t('persona.msgUpdated'))
+    } else {
+      await createPersona(payload)
+      ElMessage.success(t('persona.msgCreated'))
+    }
     dialogVisible.value = false
     await load()
   } catch (e) {
@@ -239,37 +281,27 @@ const doCreate = async () => {
   }
 }
 
-const doRegenerate = async (persona) => {
+const doDelete = async (item) => {
   try {
-    await regeneratePersona(persona.id, userStore.userId)
-    ElMessage.success('已重新提交生成')
+    await deletePersona(item.id)
+    ElMessage.success(t('persona.msgDeleted'))
     await load()
   } catch (e) {
     /* 已提示 */
   }
 }
 
-const openDetail = async (persona) => {
-  detail.value = await getPersona(persona.id, userStore.userId)
-  detailVisible.value = true
+/**
+ * 「和那时的我对话」。
+ *
+ * 对话要调大模型，属于下一步——这里明确说一句，而不是跳到尚且不存在的对话页
+ * （旧版这里直接 router.push('/chat')，那个页面在新版里没挂载）。
+ */
+const goChat = () => {
+  ElMessage.info(t('persona.chatNotReady'))
 }
 
-const doDelete = async (persona) => {
-  try {
-    await deletePersona(persona.id, userStore.userId)
-    ElMessage.success('已删除')
-    await load()
-  } catch (e) {
-    /* 已提示 */
-  }
-}
-
-const goChat = (persona) => {
-  router.push({ path: '/chat', query: { mode: 'persona', personaId: persona.id } })
-}
-
-onMounted(load)
-onUnmounted(stopPolling)
+onMounted(reloadAll)
 </script>
 
 <style scoped>
@@ -280,13 +312,14 @@ onUnmounted(stopPolling)
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: var(--sp-3);
   flex-wrap: wrap;
 }
 .persona-title {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: var(--sp-2);
+  min-width: 0;
 }
 .name {
   font-size: var(--fs-lg);
@@ -297,14 +330,9 @@ onUnmounted(stopPolling)
   font-size: var(--fs-xs);
   color: var(--mt-text-faint);
 }
-.tags {
-  display: flex;
-  gap: var(--sp-2);
-  align-items: center;
-}
 .summary,
 .style {
-  margin: 0 0 var(--sp-4);
+  margin: 0 0 var(--sp-3);
   font-size: var(--fs-base);
   line-height: var(--lh-loose);
   color: var(--mt-text);
@@ -313,41 +341,15 @@ onUnmounted(stopPolling)
 .style {
   color: var(--mt-text-sub);
 }
-.state-box {
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--radius);
+.placeholder {
+  margin: 0 0 var(--sp-3);
   font-size: var(--fs-sm);
-  line-height: var(--lh-base);
-}
-.generating {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  background: var(--mt-primary-wash);
-  color: var(--mt-text-sub);
-}
-.failed {
-  background: var(--el-color-danger-light-9);
-  border: 1px solid var(--el-color-danger-light-7);
-}
-.fail-title {
-  margin-bottom: var(--sp-1);
-  font-weight: 500;
-  color: var(--el-color-danger-dark-2);
-}
-.fail-reason {
-  color: var(--mt-text-sub);
-  word-break: break-all;
-}
-.fail-tip {
-  margin-top: var(--sp-2);
-  font-size: var(--fs-xs);
-  color: var(--mt-text-muted);
+  color: var(--mt-text-faint);
 }
 .tip {
   font-size: var(--fs-xs);
-  color: var(--mt-text-faint);
   line-height: var(--lh-base);
+  color: var(--mt-text-faint);
   margin-top: var(--sp-1);
 }
 .detail-meta {

@@ -14,6 +14,8 @@ import { createMemoryAdapter } from '../storage/adapters/memory.js'
 import * as taskRepo from './taskRepo.js'
 import * as capsuleRepo from './capsuleRepo.js'
 import * as knowledgeRepo from './knowledgeRepo.js'
+import * as personaRepo from './personaRepo.js'
+import * as demoRepo from './demoRepo.js'
 import * as achievementRepo from './achievementRepo.js'
 import * as profileRepo from './profileRepo.js'
 import { runMaintenance } from './maintenance.js'
@@ -337,5 +339,165 @@ describe('知识库的增删改查', () => {
     const a = await knowledgeRepo.create({ title: 'A', content: '1' })
     expect(await knowledgeRepo.removeMany([a.id])).toBe(1)
     expect(await knowledgeRepo.removeMany([a.id])).toBe(0)
+  })
+})
+
+describe('分身的增删改查', () => {
+  const build = (over = {}) => ({
+    name: '那时的我',
+    selfDate: '2026-09-01',
+    docIds: ['d1'],
+    summary: '画像',
+    stylePrompt: '说话风格',
+    ...over
+  })
+
+  it('新建后能在列表里查到', async () => {
+    await personaRepo.create(build())
+    const list = await personaRepo.list()
+    expect(list).toHaveLength(1)
+    expect(list[0].name).toBe('那时的我')
+    expect(list[0].status).toBe('READY')
+  })
+
+  it('按代表时间点由近及远排列', async () => {
+    await personaRepo.create(build({ name: '早', selfDate: '2025-01-01' }))
+    await personaRepo.create(build({ name: '晚', selfDate: '2026-09-01' }))
+    expect((await personaRepo.list()).map((item) => item.name)).toEqual(['晚', '早'])
+  })
+
+  it('名称、时间点、材料缺一个都建不出来', async () => {
+    await expect(personaRepo.create(build({ name: '' }))).rejects.toThrow('请填写分身名称')
+    await expect(personaRepo.create(build({ selfDate: '' }))).rejects.toThrow('请选择代表的时间点')
+    await expect(personaRepo.create(build({ docIds: [] }))).rejects.toThrow('至少要选一篇材料')
+  })
+
+  it('修改后五项都生效', async () => {
+    const created = await personaRepo.create(build())
+    const updated = await personaRepo.update(created.id, {
+      name: '改过的',
+      selfDate: '2027-01-01',
+      docIds: ['d2', 'd3'],
+      summary: '',
+      stylePrompt: '话少了'
+    })
+    expect(updated.name).toBe('改过的')
+    expect(updated.docIds).toEqual(['d2', 'd3'])
+    expect(updated.summary).toBe('')
+    expect((await personaRepo.list())[0].stylePrompt).toBe('话少了')
+  })
+
+  it('操作不存在的分身抛 404', async () => {
+    await expect(personaRepo.update('nope', { name: 'x' })).rejects.toThrow('分身不存在')
+    await expect(personaRepo.remove('nope')).rejects.toThrow('分身不存在')
+  })
+
+  it('删除是逻辑删除：列表里不再出现，但记录还在', async () => {
+    const created = await personaRepo.create(build())
+    await personaRepo.remove(created.id)
+    expect(await personaRepo.list()).toHaveLength(0)
+
+    const raw = await personaRepo.loadPersonas()
+    expect(raw).toHaveLength(1)
+    expect(raw[0].deleted).toBe(1)
+  })
+})
+
+describe('示例内容的写入与清空', () => {
+  const NOW = new Date(2026, 8, 15, 10, 0, 0)
+
+  it('全新存储：写入三篇示例文档与一个示例分身', async () => {
+    const result = await demoRepo.seedIfNeeded('zh-CN', NOW)
+    expect(result.seeded).toBe(true)
+    expect(await knowledgeRepo.list()).toHaveLength(3)
+    expect(await personaRepo.list()).toHaveLength(1)
+  })
+
+  it('写完之后状态是「示例还在」', async () => {
+    await demoRepo.seedIfNeeded('zh-CN', NOW)
+    const state = await demoRepo.state()
+    expect(state.active).toBe(true)
+    expect(state.docCount).toBe(3)
+    expect(state.personaCount).toBe(1)
+  })
+
+  it('只写一次：再调一次什么都不做', async () => {
+    await demoRepo.seedIfNeeded('zh-CN', NOW)
+    const second = await demoRepo.seedIfNeeded('zh-CN', NOW)
+    expect(second.seeded).toBe(false)
+    expect(await knowledgeRepo.list()).toHaveLength(3)
+  })
+
+  it('知识库里已经有东西时跳过——正在用的人不该被塞示例', async () => {
+    await knowledgeRepo.create({ title: '我自己写的', content: '正文' })
+    const result = await demoRepo.seedIfNeeded('zh-CN', NOW)
+    expect(result.seeded).toBe(false)
+    expect(await knowledgeRepo.list()).toHaveLength(1)
+  })
+
+  it('已经有分身时同样跳过', async () => {
+    await personaRepo.create({ name: '我的', selfDate: '2026-01-01', docIds: ['x'] })
+    expect((await demoRepo.seedIfNeeded('zh-CN', NOW)).seeded).toBe(false)
+  })
+
+  it('英文界面写入英文示例', async () => {
+    await demoRepo.seedIfNeeded('en-US', NOW)
+    expect((await knowledgeRepo.list())[0].title.startsWith('Sample')).toBe(true)
+  })
+
+  it('清空示例只删示例，用户自己写的原封不动', async () => {
+    await demoRepo.seedIfNeeded('zh-CN', NOW)
+    const mine = await knowledgeRepo.create({ title: '我自己写的', content: '正文' })
+
+    const cleared = await demoRepo.clear(NOW)
+    expect(cleared.docs).toBe(3)
+    expect(cleared.personas).toBe(1)
+
+    const docs = await knowledgeRepo.list()
+    expect(docs).toHaveLength(1)
+    expect(docs[0].id).toBe(mine.id)
+    expect(await personaRepo.list()).toHaveLength(0)
+  })
+
+  it('清空之后状态变为「示例没了」，横幅跟着消失', async () => {
+    await demoRepo.seedIfNeeded('zh-CN', NOW)
+    await demoRepo.clear(NOW)
+    expect((await demoRepo.state()).active).toBe(false)
+  })
+
+  it('清空之后不会又冒出来一份（demoSeededAt 刻意保留）', async () => {
+    await demoRepo.seedIfNeeded('zh-CN', NOW)
+    await demoRepo.clear(NOW)
+    const again = await demoRepo.seedIfNeeded('zh-CN', NOW)
+    expect(again.seeded).toBe(false)
+    expect(await knowledgeRepo.list()).toHaveLength(0)
+  })
+
+  it('清空是幂等的：再点一次不会报错，也不会动别的数据', async () => {
+    await demoRepo.seedIfNeeded('zh-CN', NOW)
+    await demoRepo.clear(NOW)
+    const second = await demoRepo.clear(NOW)
+    expect(second).toEqual({ docs: 0, personas: 0 })
+  })
+
+  it('「保留示例」只是不再提示，数据留着', async () => {
+    await demoRepo.seedIfNeeded('zh-CN', NOW)
+    await demoRepo.dismiss()
+
+    const state = await demoRepo.state()
+    expect(state.dismissed).toBe(true)
+    expect(state.active).toBe(true)
+    expect(await knowledgeRepo.list()).toHaveLength(3)
+  })
+
+  it('用户自己删掉示例之后，横幅也该消失（不必再点一次清空）', async () => {
+    await demoRepo.seedIfNeeded('zh-CN', NOW)
+    for (const doc of await knowledgeRepo.list()) {
+      await knowledgeRepo.remove(doc.id)
+    }
+    for (const persona of await personaRepo.list()) {
+      await personaRepo.remove(persona.id)
+    }
+    expect((await demoRepo.state()).active).toBe(false)
   })
 })

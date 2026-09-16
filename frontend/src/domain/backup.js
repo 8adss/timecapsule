@@ -22,6 +22,7 @@
  */
 
 import { KNOWLEDGE_LIMITS, SOURCE_TYPE } from './knowledge.js'
+import { PERSONA_LIMITS, PERSONA_STATUS } from './persona.js'
 
 /** 备份文件的标识与版本。 */
 export const BACKUP_FORMAT = 'timecapsule-backup'
@@ -48,10 +49,19 @@ const LIMITS = Object.freeze({
   // 知识库文档。数字与 domain/knowledge.js 共用同一份，不在这里重写一遍——
   // 两边各写一遍迟早会漂移，届时会出现「界面存得进去、备份导不回来」这种最难查的问题。
   docTitle: KNOWLEDGE_LIMITS.title,
-  docContent: KNOWLEDGE_LIMITS.content
+  docContent: KNOWLEDGE_LIMITS.content,
+  // 分身。同样与 domain/persona.js 共用一份数字，不在这里重写。
+  personaName: PERSONA_LIMITS.name,
+  personaSummary: PERSONA_LIMITS.summary,
+  personaStyle: PERSONA_LIMITS.stylePrompt,
+  personaDocs: PERSONA_LIMITS.docIds,
+  personaFailReason: PERSONA_LIMITS.failReason,
+  personaModel: PERSONA_LIMITS.model
 })
 
 const DATE_TIME_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
+/** 纯日期 `yyyy-MM-dd`。分身用它记「代表哪个时间点的自己」。 */
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const DATA_IMAGE_RE = /^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/
 const HTTP_URL_RE = /^https?:\/\//i
 
@@ -67,6 +77,14 @@ const CAPSULE_STATUSES = Object.freeze([0, 1])
 
 /** 知识库文档的合法来源。取值与 domain/knowledge.js 的 SOURCE_TYPE 对应。 */
 const KNOWLEDGE_SOURCES = Object.freeze([SOURCE_TYPE.FILE, SOURCE_TYPE.PASTE])
+
+/** 分身的合法状态。取值与 domain/persona.js 的 PERSONA_STATUS 对应。 */
+const PERSONA_STATUSES = Object.freeze([
+  PERSONA_STATUS.DRAFT,
+  PERSONA_STATUS.GENERATING,
+  PERSONA_STATUS.READY,
+  PERSONA_STATUS.FAILED
+])
 
 /** 默认任务分类，与 domain/constants.js 的 DEFAULT_TASK_CATEGORY 一致。 */
 const DEFAULT_CATEGORY = '习惯'
@@ -117,6 +135,67 @@ function checkDateTime(value, path, errors, { optional = true } = {}) {
     return null
   }
   return value
+}
+
+/**
+ * 校验纯日期 `yyyy-MM-dd`（分身代表的时间点）。
+ * 与任务的时间字段不同：它不该带时分秒，比较时也按字符串比、不转 Date。
+ */
+function checkDate(value, path, errors, { optional = true } = {}) {
+  if (value === null || value === undefined) {
+    if (optional) return null
+    errors.push(`${path} 缺失`)
+    return null
+  }
+  if (typeof value !== 'string' || !DATE_RE.test(value)) {
+    errors.push(`${path} 不是合法的 yyyy-MM-dd 日期`)
+    return null
+  }
+  return value
+}
+
+/**
+ * 校验字符串数组（分身引用的材料 id）。
+ *
+ * 三件事都要挡：不是数组、元素不是非空字符串、条数超限。
+ * **去重也放在这里**——同一篇材料选两次，条数统计与合并都会出岔子，
+ * 而且备份文件是可以被手工编辑的，不能指望它已经去过重。
+ */
+function checkStringArray(value, maxItems, maxItemLength, path, errors, { optional = true, minItems = 0 } = {}) {
+  if (value === null || value === undefined) {
+    if (optional) return []
+    errors.push(`${path} 缺失`)
+    return []
+  }
+  if (!Array.isArray(value)) {
+    errors.push(`${path} 应为数组`)
+    return []
+  }
+  if (value.length > maxItems) {
+    errors.push(`${path} 条数 ${value.length} 超出上限 ${maxItems}`)
+    return value.slice(0, maxItems)
+  }
+
+  const out = []
+  for (let i = 0; i < value.length; i += 1) {
+    const item = value[i]
+    if (typeof item !== 'string' || item.trim() === '') {
+      errors.push(`${path}[${i}] 应为非空字符串`)
+      continue
+    }
+    if (item.length > maxItemLength) {
+      errors.push(`${path}[${i}] 长度超出上限 ${maxItemLength}`)
+      continue
+    }
+    if (!out.includes(item)) out.push(item)
+  }
+
+  // 空数组必须单独判：它「是数组」也「没超上限」，会被上面几条一路放过去，
+  // 而「一个不引用任何材料的分身」在语义上是不成立的（见 domain/persona.js）。
+  if (out.length < minItems) {
+    errors.push(`${path} 至少要 ${minItems} 条`)
+  }
+  return out
 }
 
 function checkEnum(value, allowed, path, errors) {
@@ -269,6 +348,42 @@ function sanitizeKnowledge(raw, index, errors) {
   }
 }
 
+/**
+ * 清洗一个分身。
+ *
+ * `docCount` 与知识库的字数、摘要同理：本地实现不存它（由 `docIds` 派生），
+ * 所以旧文件里就算夹带了这个字段也会被忽略，不会污染导入结果。
+ */
+function sanitizePersona(raw, index, errors) {
+  const path = `data.personas[${index}]`
+  if (!isPlainObject(raw)) {
+    errors.push(`${path} 不是对象`)
+    return null
+  }
+  return {
+    id: checkId(raw.id, `${path}.id`, errors),
+    name: checkString(raw.name, LIMITS.personaName, `${path}.name`, errors),
+    selfDate: checkDate(raw.selfDate, `${path}.selfDate`, errors, { optional: false }),
+    docIds: checkStringArray(
+      raw.docIds,
+      LIMITS.personaDocs,
+      LIMITS.id,
+      `${path}.docIds`,
+      errors,
+      { optional: false, minItems: 1 }
+    ),
+    // 画像与说话风格允许留空，但空值统一成空串（实体里用的就是空串，不是 null）
+    summary: checkString(raw.summary, LIMITS.personaSummary, `${path}.summary`, errors, { optional: true }) ?? '',
+    stylePrompt: checkString(raw.stylePrompt, LIMITS.personaStyle, `${path}.stylePrompt`, errors, { optional: true }) ?? '',
+    status: checkEnum(raw.status, PERSONA_STATUSES, `${path}.status`, errors),
+    failReason: checkString(raw.failReason, LIMITS.personaFailReason, `${path}.failReason`, errors, { optional: true }),
+    model: checkString(raw.model, LIMITS.personaModel, `${path}.model`, errors, { optional: true }),
+    deleted: checkFlag(raw.deleted, `${path}.deleted`, errors),
+    createdAt: checkDateTime(raw.createdAt, `${path}.createdAt`, errors, { optional: false }),
+    updatedAt: checkDateTime(raw.updatedAt, `${path}.updatedAt`, errors, { optional: false })
+  }
+}
+
 function sanitizeProfile(raw, errors) {
   const path = 'data.profile'
   if (raw === null || raw === undefined) return null
@@ -405,7 +520,9 @@ export function validateBackup(raw) {
     // 知识库是后加的集合。老备份里没有这个字段，而 sanitizeCollection 对
     // undefined 返回空数组，所以**早期导出的备份照样能导入**——
     // 新增一个集合对旧文件是向后兼容的，不需要升 BACKUP_FORMAT_VERSION。
-    knowledge: sanitizeCollection(raw.data.knowledge, 'knowledge', sanitizeKnowledge, errors)
+    knowledge: sanitizeCollection(raw.data.knowledge, 'knowledge', sanitizeKnowledge, errors),
+    // 分身同理：比知识库更晚加的集合，老备份里没有就是空数组。
+    personas: sanitizeCollection(raw.data.personas, 'personas', sanitizePersona, errors)
   }
 
   if (errors.length > 0) {
@@ -436,13 +553,15 @@ export function buildBackup(data, now = new Date()) {
       capsules: data.capsules ?? [],
       achievements: data.achievements ?? [],
       settings: data.settings ?? {},
-      knowledge: data.knowledge ?? []
+      knowledge: data.knowledge ?? [],
+      personas: data.personas ?? []
     },
     counts: {
       tasks: (data.tasks ?? []).length,
       capsules: (data.capsules ?? []).length,
       achievements: (data.achievements ?? []).length,
-      knowledge: (data.knowledge ?? []).length
+      knowledge: (data.knowledge ?? []).length,
+      personas: (data.personas ?? []).length
     }
   }
 }
@@ -515,6 +634,10 @@ export function mergeData(current, incoming) {
   // 所以「本机删了、备份里还在」时，合并结果以 updatedAt 较新的那份为准——
   // 墓碑比旧内容新，删除状态就会被保留下来，文档不会复活。
   const knowledge = mergeById(current.knowledge ?? [], incoming.knowledge ?? [])
+  // 分身与知识库同理：逻辑删除 + 按 updatedAt 较新者胜出。
+  // 分身引用的材料 id 不在这里校验——被引用的文档可能已经被删掉了，
+  // 那是正常状态（界面上会显示「材料已删除」），不该让整份导入失败。
+  const personas = mergeById(current.personas ?? [], incoming.personas ?? [])
 
   const profile = pickNewer(current.profile, incoming.profile)
 
@@ -526,7 +649,8 @@ export function mergeData(current, incoming) {
       achievements: achievements.list,
       // 设置项以导入的为准：它是使用偏好，没有「更新」的时间戳可比
       settings: { ...(current.settings ?? {}), ...(incoming.settings ?? {}) },
-      knowledge: knowledge.list
+      knowledge: knowledge.list,
+      personas: personas.list
     },
     summary: {
       tasksAdded: tasks.added,
@@ -535,7 +659,9 @@ export function mergeData(current, incoming) {
       capsulesUpdated: capsules.updated,
       achievementsAdded: achievements.added,
       knowledgeAdded: knowledge.added,
-      knowledgeUpdated: knowledge.updated
+      knowledgeUpdated: knowledge.updated,
+      personasAdded: personas.added,
+      personasUpdated: personas.updated
     }
   }
 }
@@ -558,7 +684,8 @@ export function replaceData(incoming) {
       capsules: incoming.capsules ?? [],
       achievements: incoming.achievements ?? [],
       settings: incoming.settings ?? {},
-      knowledge: incoming.knowledge ?? []
+      knowledge: incoming.knowledge ?? [],
+      personas: incoming.personas ?? []
     },
     summary: {
       tasksAdded: (incoming.tasks ?? []).length,
@@ -567,7 +694,9 @@ export function replaceData(incoming) {
       capsulesUpdated: 0,
       achievementsAdded: (incoming.achievements ?? []).length,
       knowledgeAdded: (incoming.knowledge ?? []).length,
-      knowledgeUpdated: 0
+      knowledgeUpdated: 0,
+      personasAdded: (incoming.personas ?? []).length,
+      personasUpdated: 0
     }
   }
 }
