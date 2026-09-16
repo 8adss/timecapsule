@@ -307,11 +307,11 @@
   },
   "demo": {
     "title": "This is sample content",
-    "desc": "A few sample documents and a sample persona, so you can see what this looks like and what it does. Clear them and start recording your own.",
+    "desc": "A sample is already in place: a few documents, two sample personas (\"who I was then\", and Zhuangzi read out of excerpts from the Zhuangzi), and one already-opened capsule. Open the chat page and say something to them. Clear it all and start recording your own.",
     "clear": "Clear samples",
     "keep": "Keep them",
     "clearConfirmTitle": "Confirm clearing samples",
-    "clearConfirm": "This deletes the sample documents and the sample persona. Nothing you wrote yourself will be touched. Continue?",
+    "clearConfirm": "This deletes the sample documents, the sample personas and their conversations, and the sample capsule. Nothing you wrote yourself will be touched. Continue?",
     "cleared": "Sample content cleared — go ahead and record your own"
   },
   "achievementType": {
@@ -359,6 +359,12 @@
     "offlineNote": "Tasks, capsules, knowledge and personas work fully offline; only Chat goes online",
     "warnTitle": "Your data only exists on this device",
     "warnDesc": "Clearing browser data, using private browsing, or switching devices will make it disappear. Export a backup regularly.",
+    "demoLoad": "Load sample content",
+    "demoHint": "Put a sample in to look around: a few documents, two sample personas (\"who I was then\" and Zhuangzi, read out of excerpts from the Zhuangzi), and one already-opened capsule. You can clear it and load it again any time.",
+    "demoActive": "The sample content is still here. Clear it with the button on the left.",
+    "demoClear": "Clear sample content",
+    "demoLoaded": "Loaded samples: {docs} documents, {personas} personas, {capsules} capsules",
+    "demoAlready": "The sample content is already here",
     "backupTitle": "Backup & restore",
     "export": "Export everything",
     "exportHint": "Downloads a single JSON file containing your tasks, capsules, achievements, profile, knowledge documents, personas and conversations — but not your API key",

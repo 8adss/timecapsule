@@ -420,26 +420,28 @@ describe('分身的增删改查', () => {
 describe('示例内容的写入与清空', () => {
   const NOW = new Date(2026, 8, 15, 10, 0, 0)
 
-  it('全新存储：写入三篇示例文档与一个示例分身', async () => {
+  it('全新存储：写入六篇示例文档、两个示例分身与一枚已开启的胶囊', async () => {
     const result = await demoRepo.seedIfNeeded('zh-CN', NOW)
     expect(result.seeded).toBe(true)
-    expect(await knowledgeRepo.list()).toHaveLength(3)
-    expect(await personaRepo.list()).toHaveLength(1)
+    expect(await knowledgeRepo.list()).toHaveLength(6)
+    expect(await personaRepo.list()).toHaveLength(2)
+    expect(await capsuleRepo.listOpened()).toHaveLength(1)
   })
 
   it('写完之后状态是「示例还在」', async () => {
     await demoRepo.seedIfNeeded('zh-CN', NOW)
     const state = await demoRepo.state()
     expect(state.active).toBe(true)
-    expect(state.docCount).toBe(3)
-    expect(state.personaCount).toBe(1)
+    expect(state.docCount).toBe(6)
+    expect(state.personaCount).toBe(2)
+    expect(state.capsuleCount).toBe(1)
   })
 
   it('只写一次：再调一次什么都不做', async () => {
     await demoRepo.seedIfNeeded('zh-CN', NOW)
     const second = await demoRepo.seedIfNeeded('zh-CN', NOW)
     expect(second.seeded).toBe(false)
-    expect(await knowledgeRepo.list()).toHaveLength(3)
+    expect(await knowledgeRepo.list()).toHaveLength(6)
   })
 
   it('知识库里已经有东西时跳过——正在用的人不该被塞示例', async () => {
@@ -464,13 +466,15 @@ describe('示例内容的写入与清空', () => {
     const mine = await knowledgeRepo.create({ title: '我自己写的', content: '正文' })
 
     const cleared = await demoRepo.clear(NOW)
-    expect(cleared.docs).toBe(3)
-    expect(cleared.personas).toBe(1)
+    expect(cleared.docs).toBe(6)
+    expect(cleared.personas).toBe(2)
+    expect(cleared.capsules).toBe(1)
 
     const docs = await knowledgeRepo.list()
     expect(docs).toHaveLength(1)
     expect(docs[0].id).toBe(mine.id)
     expect(await personaRepo.list()).toHaveLength(0)
+    expect(await capsuleRepo.listOpened()).toHaveLength(0)
   })
 
   it('清空之后状态变为「示例没了」，横幅跟着消失', async () => {
@@ -491,7 +495,7 @@ describe('示例内容的写入与清空', () => {
     await demoRepo.seedIfNeeded('zh-CN', NOW)
     await demoRepo.clear(NOW)
     const second = await demoRepo.clear(NOW)
-    expect(second).toEqual({ docs: 0, personas: 0 })
+    expect(second).toEqual({ docs: 0, personas: 0, capsules: 0 })
   })
 
   it('「保留示例」只是不再提示，数据留着', async () => {
@@ -501,10 +505,10 @@ describe('示例内容的写入与清空', () => {
     const state = await demoRepo.state()
     expect(state.dismissed).toBe(true)
     expect(state.active).toBe(true)
-    expect(await knowledgeRepo.list()).toHaveLength(3)
+    expect(await knowledgeRepo.list()).toHaveLength(6)
   })
 
-  it('用户自己删掉示例之后，横幅也该消失（不必再点一次清空）', async () => {
+  it('用户删掉文档与分身后横幅仍然在——因为示例胶囊还在（它也属于示例）', async () => {
     await demoRepo.seedIfNeeded('zh-CN', NOW)
     for (const doc of await knowledgeRepo.list()) {
       await knowledgeRepo.remove(doc.id)
@@ -512,7 +516,74 @@ describe('示例内容的写入与清空', () => {
     for (const persona of await personaRepo.list()) {
       await personaRepo.remove(persona.id)
     }
+
+    // 胶囊在界面上没有单独的删除入口，所以它还在时示例就确实还在；
+    // 用户不想看这条横幅，点「保留示例」即可（上一条用例）。
+    const state = await demoRepo.state()
+    expect(state.active).toBe(true)
+    expect(state.docCount).toBe(0)
+    expect(state.capsuleCount).toBe(1)
+
+    await demoRepo.clear(NOW)
     expect((await demoRepo.state()).active).toBe(false)
+  })
+})
+
+describe('手动载入示例（设置页那个按钮）', () => {
+  const NOW = new Date(2026, 8, 15, 10, 0, 0)
+
+  it('知识库里已经有东西时照样能载入——用户自己点的，不受那三个条件限制', async () => {
+    await knowledgeRepo.create({ title: '我自己写的', content: '正文' })
+
+    const result = await demoRepo.seedNow('zh-CN', NOW)
+    expect(result.loaded).toBe(true)
+    expect(await knowledgeRepo.list()).toHaveLength(7) // 6 篇示例 + 自己那篇
+    expect(await personaRepo.list()).toHaveLength(2)
+  })
+
+  it('已经载入过就不再写第二份（连点两下不会翻倍）', async () => {
+    await demoRepo.seedNow('zh-CN', NOW)
+    const again = await demoRepo.seedNow('zh-CN', NOW)
+    expect(again.loaded).toBe(false)
+    expect(await knowledgeRepo.list()).toHaveLength(6)
+    expect(await personaRepo.list()).toHaveLength(2)
+  })
+
+  it('清空之后可以再载入一份——这正是它存在的理由', async () => {
+    await demoRepo.seedIfNeeded('zh-CN', NOW)
+    await demoRepo.clear(NOW)
+    expect((await demoRepo.state()).active).toBe(false)
+
+    expect((await demoRepo.seedNow('zh-CN', NOW)).loaded).toBe(true)
+    expect(await knowledgeRepo.list()).toHaveLength(6)
+    expect((await demoRepo.state()).active).toBe(true)
+  })
+
+  it('再载入的是新的一批（不会指着已经删掉的那批 id）', async () => {
+    await demoRepo.seedIfNeeded('zh-CN', NOW)
+    const before = await personaRepo.list()
+    await demoRepo.clear(NOW)
+    await demoRepo.seedNow('zh-CN', NOW)
+
+    const after = await personaRepo.list()
+    expect(after).toHaveLength(2)
+    expect(after.map((item) => item.id)).not.toEqual(before.map((item) => item.id))
+    // 旧的那批仍是墓碑，没有被复活
+    const raw = await personaRepo.loadPersonas()
+    expect(raw.filter((item) => item.deleted === 1)).toHaveLength(2)
+  })
+
+  it('载入的示例胶囊是已开启的，对话页的「过去的你」立刻能用', async () => {
+    await demoRepo.seedNow('zh-CN', NOW)
+    const opened = await capsuleRepo.listOpened()
+    expect(opened).toHaveLength(1)
+    // 而且是 90 天前写的、30 天前到期的，读起来像真的
+    expect(opened[0].content).toContain('我还没开始')
+  })
+
+  it('载入示例不会发放成就（示例不该往成就墙上塞徽章）', async () => {
+    await demoRepo.seedNow('zh-CN', NOW)
+    expect(await grantedValues(ACHIEVEMENT_TYPE.CAPSULE)).toEqual([])
   })
 })
 

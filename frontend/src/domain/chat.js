@@ -286,8 +286,8 @@ const PROMPTS = Object.freeze({
 
     persona: ({ name, selfDate, summary, stylePrompt, snippets }) => {
       const parts = [
-        `你就是用户的「${name}」——${selfDate} 那个时候的 TA 本人。`,
-        '现在用户在和你说话，你要用第一人称「我」，以那个时间点的自己的身份回应。',
+        `你现在是用户的「${name}」（代表 ${selfDate}）。`,
+        '用第一人称「我」说话，完全以这个身份回应，不要跳出角色。',
         '',
         '【你的人物档案】',
         summary.trim() === '' ? '（暂无画像，请依据材料自然表达）' : summary.trim(),
@@ -337,8 +337,8 @@ const PROMPTS = Object.freeze({
 
     persona: ({ name, selfDate, summary, stylePrompt, snippets }) => {
       const parts = [
-        `You are the user's “${name}” — the user themself at ${selfDate}.`,
-        'The user is talking to you now. Speak in the first person, as who you were at that point in time.',
+        `You are now the user's “${name}” (representing ${selfDate}).`,
+        'Speak in the first person as this identity throughout, and stay in character.',
         '',
         '【Your profile】',
         summary.trim() === '' ? '(No profile yet — express yourself from the material below.)' : summary.trim(),

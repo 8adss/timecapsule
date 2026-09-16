@@ -1,9 +1,9 @@
 /**
  * 示例内容的写入与清空。
  *
- * 这是唯一一个**跨集合**的仓储：写一次示例要同时动 `knowledge`、`personas`
- * 与 `meta`，清空时还要连带 `dialogues`，所以必须走 `writeMany`（IndexedDB 单事务）。
- * 否则可能出现「文档写进去了、分身没写进去」这种半途状态——
+ * 这是唯一一个**跨集合**的仓储：写一次示例要同时动 `knowledge`、`personas`、
+ * `capsules` 与 `meta`，清空时还要连带 `dialogues`，所以必须走 `writeMany`
+ * （IndexedDB 单事务）。否则可能出现「文档写进去了、分身没写进去」这种半途状态——
  * 而横幅还会指着那批不存在的记录。
  *
  * 判定逻辑（该不该写、哪几条算示例）全在 `domain/demo.js`，本层只负责读写。
@@ -19,19 +19,20 @@ import {
   shouldSeedDemo
 } from '../domain/demo.js'
 import { loadDialogues, markTargetsDeletedWithinLock } from './chatRepo.js'
-
-/** 读出与示例相关的三个键，并保证类型正确（存储可能被手改过）。 */
+/** 读出与示例相关的几个键，并保证类型正确（存储可能被手改过）。 */
 async function readScope() {
-  const [meta, knowledge, personas] = await Promise.all([
+  const [meta, knowledge, personas, capsules] = await Promise.all([
     read(KEY.meta, {}),
     read(KEY.knowledge, []),
-    read(KEY.personas, [])
+    read(KEY.personas, []),
+    read(KEY.capsules, [])
   ])
 
   return {
     meta: meta && typeof meta === 'object' ? meta : {},
     knowledge: Array.isArray(knowledge) ? knowledge : [],
-    personas: Array.isArray(personas) ? personas : []
+    personas: Array.isArray(personas) ? personas : [],
+    capsules: Array.isArray(capsules) ? capsules : []
   }
 }
 
@@ -60,6 +61,24 @@ export async function state() {
 }
 
 /**
+ * 把示例内容写进存储。
+ *
+ * 调用方负责判定「该不该写」（`seedIfNeeded`）或「用户是不是明确要」
+ * （`seedNow`），这里只负责落盘。
+ */
+async function writeSeed(current, lang, now) {
+  const seed = buildDemoSeed(lang, now)
+  await writeMany([
+    [KEY.knowledge, [...current.knowledge, ...seed.docs]],
+    [KEY.personas, [...current.personas, ...seed.personas]],
+    [KEY.capsules, [...current.capsules, ...seed.capsules]],
+    [KEY.meta, buildDemoMeta(current.meta, seed, now)]
+  ])
+
+  return { docs: seed.docs.length, personas: seed.personas.length, capsules: seed.capsules.length }
+}
+
+/**
  * 首次打开时写入示例内容。
  *
  * 不该写就什么都不做（不持锁、不落盘）：三个条件见 `domain/demo.js` 的
@@ -67,7 +86,7 @@ export async function state() {
  *
  * @param {string} [lang] - 界面语言，决定写入中文还是英文示例
  * @param {Date} [now] - 参考时刻
- * @returns {Promise<{seeded: boolean, docs?: number, personas?: number}>}
+ * @returns {Promise<{seeded: boolean, docs?: number, personas?: number, capsules?: number}>}
  */
 export async function seedIfNeeded(lang, now = new Date()) {
   return withWriteLock(async () => {
@@ -76,14 +95,32 @@ export async function seedIfNeeded(lang, now = new Date()) {
       return { seeded: false }
     }
 
-    const seed = buildDemoSeed(lang, now)
-    await writeMany([
-      [KEY.knowledge, [...current.knowledge, ...seed.docs]],
-      [KEY.personas, [...current.personas, ...seed.personas]],
-      [KEY.meta, buildDemoMeta(current.meta, seed, now)]
-    ])
+    return { seeded: true, ...(await writeSeed(current, lang, now)) }
+  })
+}
 
-    return { seeded: true, docs: seed.docs.length, personas: seed.personas.length }
+/**
+ * 用户主动载入示例内容（设置页那个按钮）。
+ *
+ * 与 `seedIfNeeded` 的差别只有一处：**不受 `shouldSeedDemo` 那三个条件限制**。
+ * 那三个条件是为了避免「把示例塞给已经在用的人」，而这里是用户自己点的，
+ * 说明他就是要——常见场景是清空数据之后想再看一眼，或想拿示例给朋友演示。
+ *
+ * 幂等：当前这份示例还活着就什么都不做，免得连点两下写出两份。
+ * 已经清空过（或从来没写过）时才真的写。
+ *
+ * @param {string} [lang]
+ * @param {Date} [now]
+ * @returns {Promise<{loaded: boolean, docs?: number, personas?: number, capsules?: number}>}
+ */
+export async function seedNow(lang, now = new Date()) {
+  return withWriteLock(async () => {
+    const current = await readScope()
+    if (demoStateFrom(current).active) {
+      return { loaded: false }
+    }
+
+    return { loaded: true, ...(await writeSeed(current, lang, now)) }
   })
 }
 
@@ -106,6 +143,7 @@ export async function clear(now = new Date()) {
 
     const docs = markDeleted(current.knowledge, new Set(ids.knowledge), timestamp)
     const personas = markDeleted(current.personas, new Set(ids.personas), timestamp)
+    const capsules = markDeleted(current.capsules, new Set(ids.capsules), timestamp)
     // 示例分身名下的对话也要一起清。用户在示例里点过「和那时的我对话」的话，
     // 那些记录在分身消失之后就再也没有入口能到达了，只会留在存储与备份里。
     const dialogues = markTargetsDeletedWithinLock(
@@ -117,11 +155,15 @@ export async function clear(now = new Date()) {
     await writeMany([
       [KEY.knowledge, docs.list],
       [KEY.personas, personas.list],
+      [KEY.capsules, capsules.list],
       [KEY.dialogues, dialogues],
-      [KEY.meta, { ...current.meta, demoIds: { knowledge: [], personas: [] } }]
+      [KEY.meta, {
+        ...current.meta,
+        demoIds: { knowledge: [], personas: [], capsules: [] }
+      }]
     ])
 
-    return { docs: docs.changed, personas: personas.changed }
+    return { docs: docs.changed, personas: personas.changed, capsules: capsules.changed }
   })
 }
 

@@ -129,6 +129,8 @@ small forwarding function, and it stores nothing.
 ## Roadmap
 
 - **v2**: one-click persona distillation — reading your knowledge base into a profile and a speaking style (both are hand-written today; everything else chat needs is already in place: key setup, material recall, prompts)
+- **Talking with more than yourself**: both chat targets today are built from *your* material. The same machinery does not care whose writing it is — import what someone wrote and you can distil a persona of them. The directions we want are **historical figures** (the Zhuangzi in the sample data is already one) and **talking with a friend** after importing what they wrote
+- **A fuller model list**: the settings dropdown depends on the provider's `/models` endpoint, and some providers return only two or three (DeepSeek returns two, with no way to pick anything else). A curated list per provider, or a sensible fallback when the endpoint gives nothing, would fix that
 - **v2**: a WeChat Mini Program client, reusing the same storage adapter interface
 - **Streaming output**: replies are non-streaming today (you see "who you were then is remembering…" while waiting). SSE would mean streaming through the function and a different request path in the browser
 - **Finishing i18n**: the interface and the common validation errors are bilingual. What's left is the per-field diagnostic output from `domain/backup.js` when an import file is malformed (messages like `data.tasks[0].title 应为字符串`), which is still Chinese only. Fixing it means turning the error collection into a structured issue list — see [CONTRIBUTING.md](CONTRIBUTING.md)

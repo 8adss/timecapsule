@@ -31,6 +31,25 @@
         :title="t('settings.warnTitle')"
         :description="t('settings.warnDesc')"
       />
+
+      <el-divider />
+
+      <!--
+        示例内容的入口放在这里，而不是只靠「首次打开自动写入」：
+        自动那一份有前提（知识库为空、没有任何分身、从没写过），
+        已经用过这个应用的人永远拿不到，而清空数据之后也不会再给
+        （`demoSeededAt` 一写就不再重置）。于是想再看一眼示例的人
+        除了清库没有别的办法——这个按钮就是给他准备的。
+      -->
+      <div class="action-row">
+        <el-button v-if="demoActive" @click="doClearDemo">{{ t('settings.demoClear') }}</el-button>
+        <el-button v-else :loading="loadingDemo" @click="doLoadDemo">
+          {{ t('settings.demoLoad') }}
+        </el-button>
+        <span class="action-hint">
+          {{ demoActive ? t('settings.demoActive') : t('settings.demoHint') }}
+        </span>
+      </div>
     </el-card>
 
     <el-card shadow="never" class="card">
@@ -215,6 +234,7 @@ import {
   saveAiConfig,
   testAiConnection
 } from '../api/ai'
+import { clearDemo, getDemoState, loadDemo } from '../api/demo'
 import { useUserStore } from '../stores/user'
 import { formatDateTime } from '../utils/date'
 import { detectStorageMode } from '../storage'
@@ -351,8 +371,62 @@ const doClearAi = async () => {
   }
 }
 
-/** 快照来源的说明，让用户知道回滚会回到哪一步之前。 */
-const reasonText = computed(() => {
+// ---------------------------------------------------------------------------
+// 示例内容
+// ---------------------------------------------------------------------------
+
+const demoActive = ref(false)
+const loadingDemo = ref(false)
+
+const refreshDemo = async () => {
+  try {
+    demoActive.value = (await getDemoState()).active
+  } catch (e) {
+    // 读不到就当作没有示例：这只是个入口按钮，不该因为它让整页报错
+  }
+}
+
+const doLoadDemo = async () => {
+  loadingDemo.value = true
+  try {
+    const result = await loadDemo()
+    await refreshDemo()
+    ElMessage.success(result.loaded
+      ? t('settings.demoLoaded', {
+        docs: result.docs,
+        personas: result.personas,
+        capsules: result.capsules
+      })
+      : t('settings.demoAlready'))
+  } catch (e) {
+    /* 已提示 */
+  } finally {
+    loadingDemo.value = false
+  }
+}
+
+/** 与横幅上那个「清空示例」是同一个操作，共用一套确认文案。 */
+const doClearDemo = async () => {
+  try {
+    await ElMessageBox.confirm(t('demo.clearConfirm'), t('demo.clearConfirmTitle'), {
+      type: 'warning',
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel')
+    })
+  } catch {
+    return
+  }
+
+  try {
+    await clearDemo()
+    await refreshDemo()
+    ElMessage.success(t('demo.cleared'))
+  } catch (e) {
+    /* 已提示 */
+  }
+}
+
+/** 快照来源的说明，让用户知道回滚会回到哪一步之前。 */const reasonText = computed(() => {
   const reason = snapshot.value?.reason ?? ''
   if (reason.startsWith('import:replace')) return t('settings.reasonImportReplace')
   if (reason.startsWith('import:merge')) return t('settings.reasonImportMerge')
@@ -467,6 +541,7 @@ const doClear = async () => {
 onMounted(() => {
   refreshSnapshot()
   loadAi()
+  refreshDemo()
 })
 </script>
 

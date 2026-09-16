@@ -294,8 +294,16 @@ describe('buildPersonaSystem', () => {
 
   it('英文界面给英文提示词', () => {
     const prompt = buildPersonaSystem(persona(), [], 'en-US')
-    expect(prompt).toContain('You are the user')
+    expect(prompt).toContain('You are now the user')
     expect(prompt).toContain('under 150 words')
+  })
+
+  it('不把画像说成「用户本人」——画像也可以是别人（历史人物、朋友）', () => {
+    // 这条措辞踩过一次：原来是「{selfDate} 那个时候的 TA 本人」，
+    // 遇到庄子这种历史人物就自相矛盾了（TA 指的是用户，而庄子不是用户）。
+    const prompt = buildPersonaSystem({ ...persona(), name: '示例 · 庄子' })
+    expect(prompt).toContain('你现在是用户的「示例 · 庄子」')
+    expect(prompt).not.toContain('TA 本人')
   })
 })
 
