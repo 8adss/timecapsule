@@ -2,26 +2,28 @@
   <div class="page">
     <div class="page-head">
       <div>
-        <h1 class="page-title">时间胶囊</h1>
-        <p class="page-desc">未开启的胶囊内容会被隐藏，到点自动开启，也可以手动提前打开</p>
+        <h1 class="page-title">{{ t('capsule.title') }}</h1>
+        <p class="page-desc">{{ t('capsule.desc') }}</p>
       </div>
       <div class="page-actions">
-        <el-button type="primary" @click="openCreate">封存新胶囊</el-button>
+        <el-button type="primary" @click="openCreate">{{ t('capsule.create') }}</el-button>
       </div>
     </div>
 
-    <el-empty v-if="!loading && capsules.length === 0" description="还没有时间胶囊，去创建任务时封存一个吧" />
+    <el-empty v-if="!loading && capsules.length === 0" :description="t('capsule.empty')" />
 
     <el-card v-for="c in capsules" :key="c.id" class="capsule-card" shadow="never">
       <template #header>
         <div class="capsule-head">
-          <span class="time">🕐 开启时间：{{ formatDateTime(c.toDate) }}</span>
+          <span class="time">{{ t('capsule.opensAt', { time: formatDateTime(c.toDate) }) }}</span>
           <div class="tags">
             <el-tag v-if="c.status === 0" type="warning">
-              {{ countdown(c.toDate).expired ? '已到期，等待自动开启' : '封存中 · ' + countdown(c.toDate).text }}
+              {{ countdown(c.toDate).expired
+                ? t('capsule.dueWaiting')
+                : t('capsule.sealedWith', { text: countdownText(c.toDate) }) }}
             </el-tag>
-            <el-tag v-else type="success">已开启</el-tag>
-            <el-tag v-if="!c.taskId" type="info" effect="plain">独立胶囊</el-tag>
+            <el-tag v-else type="success">{{ t('capsule.opened') }}</el-tag>
+            <el-tag v-if="!c.taskId" type="info" effect="plain">{{ t('capsule.standalone') }}</el-tag>
           </div>
         </div>
       </template>
@@ -29,12 +31,14 @@
       <!-- 未开启：不展示正文，保持"封存"的仪式感 -->
       <div v-if="c.status === 0" class="sealed">
         <div class="lock">🔒</div>
-        <p class="sealed-text">这封信还在时间里封存着，到开启时间才能读到。</p>
+        <p class="sealed-text">{{ t('capsule.sealedText') }}</p>
       </div>
       <p v-else class="capsule-content">{{ c.content }}</p>
 
       <template #footer>
-        <el-button v-if="c.status === 0" type="primary" @click="doOpen(c)">开启胶囊</el-button>
+        <el-button v-if="c.status === 0" type="primary" @click="doOpen(c)">
+          {{ t('capsule.open') }}
+        </el-button>
         <!--
           已开启的胶囊原本还有一个「继续与过去的你对话」按钮，跳转到 /chat。
 
@@ -44,40 +48,47 @@
           <router-view> 什么都不渲染——用户会看到侧边栏还在、内容区整片空白，
           刷新也恢复不了（另外静态托管下还会因 SPA fallback 缺失直接 404）。
 
-          二期接回 /chat 时，把这个按钮与下面的 goChat 一并恢复即可。
+          二期接回 /chat 时，把这个按钮与它的跳转函数一并恢复即可。
         -->
       </template>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" title="封存新胶囊" width="560px">
+    <el-dialog v-model="dialogVisible" :title="t('capsule.create')" width="560px">
       <el-form label-width="100px">
-        <el-form-item label="开启时间" required>
+        <el-form-item :label="t('capsule.toDateLabel')" required>
           <el-date-picker
             v-model="form.toDate"
             type="datetime"
-            placeholder="未来的某个时间"
+            :placeholder="t('capsule.toDatePlaceholder')"
             style="width: 100%"
           />
         </el-form-item>
-        <el-form-item label="关联任务">
-          <el-select v-model="form.taskId" clearable placeholder="可选，选择相关任务" style="width: 100%">
-            <el-option v-for="t in tasks" :key="t.id" :label="t.title" :value="t.id" />
+        <el-form-item :label="t('capsule.taskLabel')">
+          <el-select
+            v-model="form.taskId"
+            clearable
+            :placeholder="t('capsule.taskPlaceholder')"
+            style="width: 100%"
+          >
+            <el-option v-for="item in tasks" :key="item.id" :label="item.title" :value="item.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="给未来的话" required>
+        <el-form-item :label="t('capsule.contentLabel')" required>
           <el-input
             v-model="form.content"
             type="textarea"
             :rows="5"
             maxlength="5000"
             show-word-limit
-            placeholder="写给未来的自己"
+            :placeholder="t('capsule.contentPlaceholder')"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="doCreate">封存</el-button>
+        <el-button @click="dialogVisible = false">{{ t('capsule.cancel') }}</el-button>
+        <el-button type="primary" :loading="submitting" @click="doCreate">
+          {{ t('capsule.submit') }}
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -85,10 +96,13 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 // ElMessage / ElMessageBox 由 unplugin-auto-import 自动引入，见 vite.config.js
 import { createCapsule, listCapsules, openCapsule } from '../api/capsule'
 import { listTasks } from '../api/task'
 import { countdown, daysFromNow, formatDateTime, toDateTimeString } from '../utils/date'
+
+const { t } = useI18n()
 
 const capsules = ref([])
 const tasks = ref([])
@@ -96,6 +110,20 @@ const loading = ref(false)
 const submitting = ref(false)
 const dialogVisible = ref(false)
 const form = reactive({ toDate: null, taskId: null, content: '' })
+
+/**
+ * 倒计时文案。
+ *
+ * `countdown()` 只返回 { expired, unit, value } 这样的结构化数据——
+ * 工具层不该知道界面用哪种语言，拼好的中文句子也没法翻译。
+ */
+const countdownText = (target) => {
+  const { expired, unit, value } = countdown(target)
+  if (expired) return t('countdown.expired')
+  if (unit === null) return '—'
+  if (unit === 'soon') return t('countdown.soon')
+  return t(`countdown.${unit}`, { n: value })
+}
 
 const load = async () => {
   loading.value = true
@@ -116,15 +144,15 @@ const openCreate = () => {
 
 const doCreate = async () => {
   if (!form.toDate) {
-    ElMessage.warning('请选择开启时间')
+    ElMessage.warning(t('capsule.errToDate'))
     return
   }
   if (!form.content.trim()) {
-    ElMessage.warning('请写下给未来的话')
+    ElMessage.warning(t('capsule.errContent'))
     return
   }
   if (form.toDate.getTime() <= Date.now()) {
-    ElMessage.warning('开启时间需要晚于当前时间')
+    ElMessage.warning(t('capsule.errFuture'))
     return
   }
 
@@ -135,7 +163,7 @@ const doCreate = async () => {
       toDate: toDateTimeString(form.toDate),
       content: form.content.trim()
     })
-    ElMessage.success('胶囊已封存')
+    ElMessage.success(t('capsule.msgCreated'))
     dialogVisible.value = false
     await load()
   } catch (e) {
@@ -150,9 +178,9 @@ const doOpen = async (capsule) => {
   if (!countdown(capsule.toDate).expired) {
     try {
       await ElMessageBox.confirm(
-        `这枚胶囊要到 ${formatDateTime(capsule.toDate)} 才到期，确定现在提前打开吗？`,
-        '提前开启',
-        { type: 'warning', confirmButtonText: '提前打开', cancelButtonText: '再等等' }
+        t('capsule.earlyConfirm', { time: formatDateTime(capsule.toDate) }),
+        t('capsule.earlyTitle'),
+        { type: 'warning', confirmButtonText: t('capsule.earlyOk'), cancelButtonText: t('capsule.earlyCancel') }
       )
     } catch {
       return
@@ -161,7 +189,7 @@ const doOpen = async (capsule) => {
 
   try {
     await openCapsule(capsule.id)
-    ElMessage.success('胶囊已开启，去听听过去的你说了什么')
+    ElMessage.success(t('capsule.msgOpened'))
     await load()
   } catch (e) {
     /* 已提示 */

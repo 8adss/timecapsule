@@ -16,6 +16,22 @@
       content="把此刻的决心封成一枚时间胶囊，定在未来某一天开启。本地优先的任务与自律记事本，无需注册，数据只存在你自己的浏览器里。"
     />
 
+    <!--
+      在应用挂载之前先按浏览器语言定一次标题与 <html lang>。
+      没有这一段，英文用户会先看到一瞬中文标题再被换掉——首屏闪一下很廉价。
+      应用启动后由路由接管（router/index.js 的 applyTitle），
+      用户手动切换语言也以路由那侧为准。
+    -->
+    <script>
+      ;(function () {
+        var zh = String(navigator.language || '').toLowerCase().indexOf('zh') === 0
+        document.documentElement.lang = zh ? 'zh-CN' : 'en-US'
+        document.title = zh
+          ? 'TimeCapsule · 写给未来的自己'
+          : 'TimeCapsule · Write to your future self'
+      })()
+    </script>
+
     <!-- 应用是浅色主题，声明一下可以避免浏览器把表单控件渲染成深色 -->
     <meta name="color-scheme" content="light" />
     <meta name="theme-color" content="#faf7f3" />

@@ -1,5 +1,9 @@
 # TimeCapsule · 时间胶囊
 
+[![CI](https://github.com/8adss/timecapsule/actions/workflows/ci.yml/badge.svg)](https://github.com/8adss/timecapsule/actions/workflows/ci.yml)
+
+**中文** | [English](README.en.md)
+
 > 写给未来的自己，然后等着收信。
 
 把此刻的决心封成一枚**时间胶囊**，定在未来某一天开启。在那之前，用任务清单一天天兑现它；连续打卡、成长等级与成就徽章会记录你走过的路。
@@ -18,6 +22,7 @@
 | **成长等级** | 每完成 5 个任务升 1 级，同样由完成记录算出 |
 | **成就徽章** | 任务完成 1/3/5/10/20/50、胶囊开启 1/2/3/5/10、连续打卡 2/3/7/14/30/100 天，里程碑自动解锁 |
 | **导入导出** | 全部数据导出成一个 JSON 文件；换设备或重装浏览器后导入即可恢复。支持合并与覆盖两种导入方式，导入前自动存快照可回滚 |
+| **中英双语** | 界面支持中文与英文，设置页随时切换；新增一门语言只需加一个 JSON 文件 |
 | **完全离线** | 不发起任何网络请求，没有埋点，没有账号 |
 
 ## 快速开始
@@ -99,9 +104,20 @@ Vue 3 · Vite · Pinia · Vue Router · Element Plus · idb-keyval · Vitest
 - **第二版**：AI 能力回归——与「过去的自己」对话、个人知识库、人格蒸馏。
   设计上倾向于**用户自带 API Key**，避免把密钥放在服务端被滥用
 - **第二版**：微信小程序端（复用同一套存储适配器接口）
+- **备份校验提示的国际化**：界面文案与常见校验错误都已中英双语，剩下
+  `domain/backup.js` 校验导入文件时产生的逐字段诊断信息（形如
+  `data.tasks[0].title 应为字符串`）仍是中文。要改需要把错误收集从拼字符串
+  换成结构化问题列表，见 [CONTRIBUTING.md](CONTRIBUTING.md)
 - 外接存储适配器（自建服务器 / 对象存储同步）。接口契约已定，
   见 `frontend/src/storage/adapters/remote.js`
+- 更多界面语言（欢迎翻译，加一个 JSON 文件即可）
 
 ## 参与
 
 欢迎提 Issue 与 PR。提交前请确保 `npm test` 与 `npm run build` 都通过。
+
+几条**构建能过但运行会坏**的约定写在 [CONTRIBUTING.md](CONTRIBUTING.md) 里，动手前值得看一眼。
+
+## 许可证
+
+[MIT](LICENSE)

@@ -39,23 +39,30 @@ export function formatDate(value) {
 
 /**
  * 距离目标时间还有多久，用于胶囊倒计时。
- * 返回 { expired, text }，例如 { expired: false, text: '还有 12 天' }
+ *
+ * **返回结构化数据而不是现成的文案**：拼好的中文句子没法翻译，
+ * 而这一层是纯工具，不该知道界面用哪种语言。调用方拿 `unit` 与 `value`
+ * 自己去取 i18n 的文案（见 locales 里的 `countdown.*`）。
+ *
+ * @param {string|Date|null} target - 目标时间
+ * @returns {{ expired: boolean, unit: 'day'|'hour'|'minute'|'soon'|null, value: number }}
+ *          无法解析时 `unit` 为 null；`soon` 表示不到一分钟
  */
 export function countdown(target) {
   const date = parseDateTime(target)
-  if (!date) return { expired: false, text: '—' }
+  if (!date) return { expired: false, unit: null, value: 0 }
 
   const diff = date.getTime() - Date.now()
-  if (diff <= 0) return { expired: true, text: '已到期' }
+  if (diff <= 0) return { expired: true, unit: null, value: 0 }
 
   const minutes = Math.floor(diff / 60000)
   const hours = Math.floor(minutes / 60)
   const days = Math.floor(hours / 24)
 
-  if (days > 0) return { expired: false, text: `还有 ${days} 天` }
-  if (hours > 0) return { expired: false, text: `还有 ${hours} 小时` }
-  if (minutes > 0) return { expired: false, text: `还有 ${minutes} 分钟` }
-  return { expired: false, text: '不到 1 分钟' }
+  if (days > 0) return { expired: false, unit: 'day', value: days }
+  if (hours > 0) return { expired: false, unit: 'hour', value: hours }
+  if (minutes > 0) return { expired: false, unit: 'minute', value: minutes }
+  return { expired: false, unit: 'soon', value: 0 }
 }
 
 /** 当前时间往后 n 天，作为表单默认值 */

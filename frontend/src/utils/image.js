@@ -11,6 +11,7 @@
  *    `<img src>`，允许 `image/svg+xml` 就等于允许内联脚本，那是一个 XSS 入口。
  *    这一条是安全约束，不是体验优化，不要放宽。
  */
+import { DomainError } from '../domain/errors.js'
 
 /** 允许的头像类型。**刻意排除 SVG** —— SVG 可以内嵌脚本，作为 dataURL 渲染等于 XSS。 */
 export const ALLOWED_AVATAR_TYPES = Object.freeze([
@@ -59,7 +60,7 @@ export function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(new Error('读取图片失败，请重试'))
+    reader.onerror = () => reject(new DomainError('读取图片失败，请重试', { key: 'errors.imageReadFailed' }))
     reader.readAsDataURL(file)
   })
 }
@@ -91,7 +92,7 @@ export function compressImage(dataUrl, options = {}) {
 
         const context = canvas.getContext('2d')
         if (context === null) {
-          reject(new Error('当前浏览器不支持图片压缩'))
+          reject(new DomainError('当前浏览器不支持图片压缩', { key: 'errors.canvasUnsupported' }))
           return
         }
         // 缩放后补白底：png 透明区域转成 jpeg 会变黑，webp 支持透明但补白更稳
@@ -104,7 +105,7 @@ export function compressImage(dataUrl, options = {}) {
         reject(error instanceof Error ? error : new Error('图片压缩失败'))
       }
     }
-    image.onerror = () => reject(new Error('图片解析失败，请换一张'))
+    image.onerror = () => reject(new DomainError('图片解析失败，请换一张', { key: 'errors.imageDecodeFailed' }))
     image.src = dataUrl
   })
 }
@@ -120,10 +121,10 @@ export function compressImage(dataUrl, options = {}) {
  */
 export async function prepareAvatar(file) {
   if (!file) {
-    throw new Error('请选择要上传的图片')
+    throw new DomainError('请选择要上传的图片', { key: 'errors.imageRequired' })
   }
   if (!isAllowedAvatarType(file.type)) {
-    throw new Error('只支持 JPG / PNG / WebP / GIF 格式的图片')
+    throw new DomainError('只支持 JPG / PNG / WebP / GIF 格式的图片', { key: 'errors.imageType' })
   }
 
   const original = await fileToDataUrl(file)
@@ -151,7 +152,9 @@ export async function prepareAvatar(file) {
   }
 
   if (estimateDataUrlBytes(smallest) > MAX_AVATAR_BYTES) {
-    throw new Error('图片过大且压缩后仍超出限制，请换一张更小的图片')
+    throw new DomainError('图片过大且压缩后仍超出限制，请换一张更小的图片', {
+      key: 'errors.imageTooLargeAfterCompress'
+    })
   }
   return smallest
 }

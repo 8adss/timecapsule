@@ -18,6 +18,7 @@
 import { read, writeMany, remove, KEY } from '../storage/index.js'
 import { withWriteLock } from '../storage/lock.js'
 import { nowDateTimeString } from '../domain/time.js'
+import { DomainError } from '../domain/errors.js'
 import { ACHIEVEMENT_TYPE } from '../domain/constants.js'
 import { countOpened } from '../domain/capsule.js'
 import { countDoneTasks } from '../domain/stats.js'
@@ -107,7 +108,10 @@ function reconcileWithinLock(tasks, capsules, achievements, profile, now) {
  */
 export async function importBackup(raw, mode = IMPORT_MODE.MERGE, now = new Date()) {
   if (mode !== IMPORT_MODE.MERGE && mode !== IMPORT_MODE.REPLACE) {
-    throw new Error(`未知的导入模式：${mode}`)
+    throw new DomainError(`未知的导入模式：${mode}`, {
+      key: 'errors.unknownImportMode',
+      params: { mode }
+    })
   }
 
   // 第 1 步：全量校验。放在写锁之外——失败时存储一个字节都没动过。
@@ -184,7 +188,7 @@ export async function restoreSnapshot(now = new Date()) {
   return withWriteLock(async () => {
     const snapshot = await readSnapshot()
     if (snapshot === null || !snapshot.data) {
-      throw new Error('没有可恢复的快照')
+      throw new DomainError('没有可恢复的快照', { key: 'errors.noSnapshot' })
     }
 
     const current = await readAll()

@@ -24,7 +24,10 @@ import { ACHIEVEMENT_TYPE, MILESTONES } from './constants.js'
 export function milestonesReached(type, current) {
   const all = MILESTONES[type]
   if (!all) {
-    throw new DomainError(`未知的成就类型：${type}`)
+    throw new DomainError(`未知的成就类型：${type}`, {
+      key: 'errors.unknownAchievementType',
+      params: { type }
+    })
   }
   const reached = []
   for (const milestone of all) {

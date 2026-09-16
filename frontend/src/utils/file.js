@@ -6,6 +6,7 @@
  * 替换掉的也只有这一层。
  */
 import { MAX_BACKUP_BYTES } from '../domain/backup.js'
+import { DomainError } from '../domain/errors.js'
 
 const pad = (n) => String(n).padStart(2, '0')
 
@@ -61,23 +62,28 @@ export function downloadText(filename, text) {
  */
 export async function readJsonFile(file) {
   if (!file) {
-    throw new Error('请选择要导入的备份文件')
+    throw new DomainError('请选择要导入的备份文件', { key: 'errors.backupFileRequired' })
   }
   if (file.size > MAX_BACKUP_BYTES) {
     const limitMb = Math.round(MAX_BACKUP_BYTES / 1024 / 1024)
-    throw new Error(`备份文件超过 ${limitMb} MB 上限`)
+    throw new DomainError(`备份文件超过 ${limitMb} MB 上限`, {
+      key: 'errors.backupFileTooLarge',
+      params: { limitMb }
+    })
   }
 
   let text
   try {
     text = await file.text()
   } catch {
-    throw new Error('读取文件失败，请重试')
+    throw new DomainError('读取文件失败，请重试', { key: 'errors.fileReadFailed' })
   }
 
   try {
     return JSON.parse(text)
   } catch {
-    throw new Error('文件不是合法的 JSON，可能已损坏或不是备份文件')
+    throw new DomainError('文件不是合法的 JSON，可能已损坏或不是备份文件', {
+      key: 'errors.fileNotJson'
+    })
   }
 }

@@ -59,7 +59,7 @@ export async function saveTasks(list) {
 function findOrThrow(tasks, id) {
   const task = tasks.find((item) => item.id === id && item.deleted !== 1)
   if (!task) {
-    throw new DomainError('任务不存在', 404)
+    throw new DomainError('任务不存在', { status: 404, key: 'errors.taskNotFound' })
   }
   return task
 }

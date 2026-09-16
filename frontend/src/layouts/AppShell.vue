@@ -4,13 +4,13 @@
       <!-- 品牌区：展开时是手写体字标，收起时是带双下划线的字母标记。
            字标点击回到官网首页——侧边栏里总要有一个回得去的入口。 -->
       <div class="brand" :class="{ collapsed }">
-        <router-link to="/" class="brand-text" title="返回首页">
+        <router-link to="/" class="brand-text" :title="$t('nav.backHome')">
           <span v-if="collapsed" class="mark">TC</span>
           <span v-else class="script">TimeCapsule</span>
         </router-link>
         <button
           class="toggle"
-          :title="collapsed ? '展开侧边栏' : '收起侧边栏'"
+          :title="collapsed ? $t('nav.expand') : $t('nav.collapse')"
           @click="toggleCollapsed"
         >
           <NavIcon :name="collapsed ? 'expand' : 'collapse'" />
@@ -26,10 +26,10 @@
           class="nav-item"
           active-class="active"
           exact-active-class="active"
-          :title="collapsed ? item.label : ''"
+          :title="collapsed ? $t(item.label) : ''"
         >
           <NavIcon :name="item.icon" />
-          <span v-if="!collapsed" class="nav-label">{{ item.label }}</span>
+          <span v-if="!collapsed" class="nav-label">{{ $t(item.label) }}</span>
         </router-link>
       </nav>
 
@@ -39,7 +39,9 @@
         </el-avatar>
         <div v-if="!collapsed" class="user-info">
           <div class="user-name">{{ userStore.displayName }}</div>
-          <div class="user-level">Lv.{{ userStore.growthLevel }} · 连续 {{ userStore.streakDays }} 天</div>
+          <div class="user-level">
+            {{ $t('nav.levelAndStreak', { level: userStore.growthLevel, days: userStore.streakDays }) }}
+          </div>
         </div>
       </div>
     </el-aside>
@@ -59,14 +61,15 @@ const userStore = useUserStore()
 
 const COLLAPSE_KEY = 'timecapsule.sidebarCollapsed'
 
-// 导航项。路径带 `/app` 前缀——`/` 留给官网落地页，应用整体住在 `/app` 之下。
+// 导航项。标签存的是 i18n 的键而不是文案——路由表与这层配置在启动时就固定了，
+// 写死中文的话切换语言不会生效。路径带 `/app` 前缀：`/` 留给官网落地页。
 // 第一版只列纯本地功能；知识库 / 我的分身 / 对话三个 AI 页面已随路由一并下架，
 // 二期接回 AI 时在这里加回来即可。
 const navItems = [
-  { path: '/app/tasks', label: '任务', icon: 'task' },
-  { path: '/app/capsules', label: '时间胶囊', icon: 'capsule' },
-  { path: '/app/profile', label: '我的 / 成就', icon: 'achievement' },
-  { path: '/app/settings', label: '设置', icon: 'settings' }
+  { path: '/app/tasks', label: 'nav.tasks', icon: 'task' },
+  { path: '/app/capsules', label: 'nav.capsules', icon: 'capsule' },
+  { path: '/app/profile', label: 'nav.profile', icon: 'achievement' },
+  { path: '/app/settings', label: 'nav.settings', icon: 'settings' }
 ]
 
 // 收起状态记在 localStorage，刷新后保持

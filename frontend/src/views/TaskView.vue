@@ -2,11 +2,11 @@
   <div class="page">
     <div class="page-head">
       <div>
-        <h1 class="page-title">任务</h1>
-        <p class="page-desc">完成任务会同步更新连续打卡、成长等级与成就徽章</p>
+        <h1 class="page-title">{{ t('task.title') }}</h1>
+        <p class="page-desc">{{ t('task.desc') }}</p>
       </div>
       <div class="page-actions">
-        <el-button type="primary" @click="openCreate">新建任务</el-button>
+        <el-button type="primary" @click="openCreate">{{ t('task.create') }}</el-button>
       </div>
     </div>
 
@@ -16,33 +16,35 @@
         :data="tasks"
         border
         stripe
-        empty-text="还没有任务，点右上角新建一个吧"
+        :empty-text="t('task.empty')"
       >
-        <el-table-column prop="title" label="任务" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="category" label="类别" width="90" />
-        <el-table-column label="截止时间" width="160">
+        <el-table-column prop="title" :label="t('task.colTitle')" min-width="180" show-overflow-tooltip />
+        <el-table-column :label="t('task.colCategory')" width="100">
+          <template #default="{ row }">{{ categoryLabel(row.category) }}</template>
+        </el-table-column>
+        <el-table-column :label="t('task.colDue')" width="160">
           <template #default="{ row }">{{ formatDateTime(row.dueDate) }}</template>
         </el-table-column>
-        <el-table-column label="提醒时间" width="160">
+        <el-table-column :label="t('task.colRemind')" width="160">
           <template #default="{ row }">{{ formatDateTime(row.remindTime) }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="100">
+        <el-table-column :label="t('task.colStatus')" width="110">
           <template #default="{ row }">
-            <el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
+            <el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="250" fixed="right">
+        <el-table-column :label="t('task.colActions')" width="250" fixed="right">
           <template #default="{ row }">
             <el-button v-if="isOpen(row)" size="small" type="success" @click="doComplete(row)">
-              完成
+              {{ t('task.actComplete') }}
             </el-button>
-            <el-button size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button size="small" @click="openEdit(row)">{{ t('task.actEdit') }}</el-button>
             <el-button v-if="isOpen(row)" size="small" type="warning" @click="doAbandon(row)">
-              放弃
+              {{ t('task.actAbandon') }}
             </el-button>
-            <el-popconfirm title="确定删除这个任务吗？" @confirm="doDelete(row)">
+            <el-popconfirm :title="t('task.deleteConfirm')" @confirm="doDelete(row)">
               <template #reference>
-                <el-button size="small" type="danger">删除</el-button>
+                <el-button size="small" type="danger">{{ t('task.actDelete') }}</el-button>
               </template>
             </el-popconfirm>
           </template>
@@ -50,70 +52,82 @@
       </el-table>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑任务' : '新建任务'" width="560px">
+    <el-dialog
+      v-model="dialogVisible"
+      :title="isEdit ? t('task.edit') : t('task.create')"
+      width="560px"
+    >
       <el-form label-width="110px">
-        <el-form-item label="任务名称" required>
-          <el-input v-model="form.title" placeholder="例如：每天背 30 个单词" maxlength="100" />
+        <el-form-item :label="t('task.nameLabel')" required>
+          <el-input v-model="form.title" :placeholder="t('task.namePlaceholder')" maxlength="100" />
         </el-form-item>
-        <el-form-item label="类别">
+        <el-form-item :label="t('task.categoryLabel')">
           <el-select v-model="form.category" style="width: 100%">
-            <el-option label="学习" value="学习" />
-            <el-option label="健身" value="健身" />
-            <el-option label="工作" value="工作" />
-            <el-option label="习惯" value="习惯" />
+            <!--
+              注意 value 用的是中文字面量而不是语言键。
+              类别是**存储值**：它写在 IndexedDB 里，也随导出备份流转，
+              换一门语言就变一个值的话，已有数据和旧备份会全部对不上。
+              所以只翻译显示用的 label，存进去的始终是这四个中文词。
+            -->
+            <el-option
+              v-for="value in CATEGORY_VALUES"
+              :key="value"
+              :label="categoryLabel(value)"
+              :value="value"
+            />
           </el-select>
         </el-form-item>
-        <el-form-item label="截止时间">
+        <el-form-item :label="t('task.dueLabel')">
           <el-date-picker
             v-model="form.dueDate"
             type="datetime"
-            placeholder="选择截止时间（可不填）"
+            :placeholder="t('task.duePlaceholder')"
             style="width: 100%"
             @change="onDueDateChange"
           />
         </el-form-item>
-        <el-form-item label="提醒时间">
+        <el-form-item :label="t('task.remindLabel')">
           <el-date-picker
             v-model="form.remindTime"
             type="datetime"
-            placeholder="选择提醒时间（可不填）"
+            :placeholder="t('task.remindPlaceholder')"
             style="width: 100%"
           />
         </el-form-item>
-        <el-form-item label="任务描述">
-          <el-input v-model="form.description" placeholder="补充说明（可不填）" maxlength="500" />
+        <el-form-item :label="t('task.descLabel')">
+          <el-input v-model="form.description" :placeholder="t('task.descPlaceholder')" maxlength="500" />
         </el-form-item>
 
         <!-- 胶囊相关字段只在新建时出现：编辑已有任务不重复封存胶囊 -->
         <template v-if="!isEdit">
-          <el-divider>时间胶囊（写给未来的自己）</el-divider>
-          <el-form-item label="给未来的话" required>
+          <el-divider>{{ t('task.capsuleDivider') }}</el-divider>
+          <el-form-item :label="t('task.capsuleContentLabel')" required>
             <el-input
               v-model="form.capsuleContent"
               type="textarea"
               :rows="4"
               maxlength="5000"
               show-word-limit
-              placeholder="完成这个任务时，你想对未来的自己说什么？例如：希望你已经坚持下来了，我很期待见到你。"
+              :placeholder="t('task.capsuleContentPlaceholder')"
             />
           </el-form-item>
-          <el-form-item label="开启时间" required>
+          <el-form-item :label="t('task.capsuleToDateLabel')" required>
             <el-date-picker
               v-model="form.capsuleToDate"
               type="datetime"
-              placeholder="到这个时候自动开启"
+              :placeholder="t('task.capsuleToDatePlaceholder')"
               style="width: 100%"
               @change="capsuleToDateTouched = true"
             />
-            <div class="form-tip">默认 7 天后；到点后由定时任务自动开启，也可以提前手动打开</div>
+            <div class="form-tip">{{ t('task.capsuleToDateTip') }}</div>
           </el-form-item>
         </template>
       </el-form>
 
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button @click="dialogVisible = false">{{ t('task.cancel') }}</el-button>
         <el-button type="primary" :loading="submitting" @click="submit">
-          {{ isEdit ? '保存' : '创建任务' }}
+          {{ isEdit ? t('task.save') : t('task.submitCreate') }}
         </el-button>
       </template>
     </el-dialog>
@@ -122,6 +136,7 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 // ElMessage 由 unplugin-auto-import 自动引入，见 vite.config.js
 import {
   abandonTask,
@@ -134,7 +149,20 @@ import {
 import { useUserStore } from '../stores/user'
 import { daysFromNow, formatDateTime, toDateTimeString } from '../utils/date'
 
+const { t } = useI18n()
 const userStore = useUserStore()
+
+/** 类别的存储值。顺序即下拉框顺序，值本身永远是中文——理由见模板里的注释。 */
+const CATEGORY_VALUES = ['学习', '健身', '工作', '习惯']
+/** 存储值 → 语言键。分开写是为了让语言键里不出现中文，便于检索与校对。 */
+const CATEGORY_KEY = { 学习: 'study', 健身: 'fitness', 工作: 'work', 习惯: 'habit' }
+
+const STATUS_KEY = {
+  0: 'task.statusOngoing',
+  1: 'task.statusDone',
+  2: 'task.statusOverdue',
+  3: 'task.statusAbandoned'
+}
 
 const tasks = ref([])
 const loading = ref(false)
@@ -155,8 +183,10 @@ const form = reactive({
 })
 
 const isOpen = (row) => row.status === 0 || row.status === 2
-const statusText = (s) => ({ 0: '进行中', 1: '已完成', 2: '已逾期', 3: '已放弃' }[s] ?? '未知')
-const statusType = (s) => ({ 0: 'primary', 1: 'success', 2: 'danger', 3: 'info' }[s] ?? 'info')
+
+const categoryLabel = (value) => t(`category.${CATEGORY_KEY[value] ?? 'other'}`)
+const statusLabel = (status) => t(STATUS_KEY[status] ?? 'task.statusUnknown')
+const statusType = (status) => ({ 0: 'primary', 1: 'success', 2: 'danger', 3: 'info' }[status] ?? 'info')
 
 const load = async () => {
   loading.value = true
@@ -200,36 +230,38 @@ const openCreate = () => {
   dialogVisible.value = true
 }
 
-const openEdit = (row) => {
-  isEdit.value = true
-  editingId.value = row.id
-  form.title = row.title
-  form.category = row.category || '习惯'
-  form.description = row.description || ''
-  // 后端返回的是 'yyyy-MM-dd HH:mm:ss'，要转成 Date 才能回填给日期选择器
-  form.dueDate = parseToDate(row.dueDate)
-  form.remindTime = parseToDate(row.remindTime)
-  dialogVisible.value = true
-}
-
+/** 存储里放的是 'yyyy-MM-dd HH:mm:ss'，要转成 Date 才能回填给日期选择器 */
 const parseToDate = (value) => {
   if (!value) return null
   const date = new Date(String(value).replace(' ', 'T'))
   return Number.isNaN(date.getTime()) ? null : date
 }
 
+const openEdit = (row) => {
+  isEdit.value = true
+  editingId.value = row.id
+  form.title = row.title
+  form.category = row.category || '习惯'
+  form.description = row.description || ''
+  form.dueDate = parseToDate(row.dueDate)
+  form.remindTime = parseToDate(row.remindTime)
+  dialogVisible.value = true
+}
+
 const submit = async () => {
+  // 这几条校验放在这里而不是依赖仓储层抛错：弹窗里的即时反馈比一次往返更直接。
+  // 仓储层仍然会再校验一遍——那一层才是权威。
   if (!form.title.trim()) {
-    ElMessage.warning('请填写任务名称')
+    ElMessage.warning(t('task.errName'))
     return
   }
   if (!isEdit.value) {
     if (!form.capsuleContent.trim()) {
-      ElMessage.warning('请写下给未来的话')
+      ElMessage.warning(t('task.errCapsuleContent'))
       return
     }
     if (!form.capsuleToDate) {
-      ElMessage.warning('请选择胶囊开启时间')
+      ElMessage.warning(t('task.errCapsuleToDate'))
       return
     }
   }
@@ -246,7 +278,7 @@ const submit = async () => {
 
     if (isEdit.value) {
       await updateTask(editingId.value, payload)
-      ElMessage.success('任务已更新')
+      ElMessage.success(t('task.msgUpdated'))
     } else {
       // 任务与胶囊由仓储层在同一个 IndexedDB 事务里一起写入，不会出现"有任务没胶囊"
       await createTask({
@@ -254,13 +286,13 @@ const submit = async () => {
         capsuleContent: form.capsuleContent.trim(),
         capsuleToDate: toDateTimeString(form.capsuleToDate)
       })
-      ElMessage.success('任务已创建，时间胶囊已封存')
+      ElMessage.success(t('task.msgCreated'))
     }
 
     dialogVisible.value = false
     await load()
   } catch (e) {
-    // 错误提示已由 request 拦截器统一弹出，这里只需要不关闭弹窗让用户改
+    // 错误提示已由 api/local.js 统一弹出；这里只需保持弹窗打开，让用户能改
   } finally {
     submitting.value = false
   }
@@ -269,7 +301,7 @@ const submit = async () => {
 const doComplete = async (row) => {
   try {
     await completeTask(row.id)
-    ElMessage.success('任务已完成，去胶囊页看看过去的你说了什么')
+    ElMessage.success(t('task.msgCompleted'))
     await load()
     // 完成会改变连续打卡与成长等级，同步刷新左侧用户信息
     await userStore.refresh()
@@ -281,7 +313,7 @@ const doComplete = async (row) => {
 const doAbandon = async (row) => {
   try {
     await abandonTask(row.id)
-    ElMessage.success('任务已标记为放弃')
+    ElMessage.success(t('task.msgAbandoned'))
     await load()
   } catch (e) {
     /* 已提示 */
@@ -291,7 +323,7 @@ const doAbandon = async (row) => {
 const doDelete = async (row) => {
   try {
     await deleteTask(row.id)
-    ElMessage.success('任务已删除')
+    ElMessage.success(t('task.msgDeleted'))
     await load()
   } catch (e) {
     /* 已提示 */

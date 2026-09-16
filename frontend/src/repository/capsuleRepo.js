@@ -43,7 +43,7 @@ export async function saveCapsules(list) {
 function findOrThrow(capsules, id) {
   const capsule = capsules.find((item) => item.id === id && item.deleted !== 1)
   if (!capsule) {
-    throw new DomainError('胶囊不存在', 404)
+    throw new DomainError('胶囊不存在', { status: 404, key: 'errors.capsuleNotFound' })
   }
   return capsule
 }
@@ -64,7 +64,7 @@ export function appendCapsuleWithinLock(capsules, input, tasks, now = new Date()
   if (input.taskId != null) {
     const task = tasks.find((item) => item.id === input.taskId && item.deleted !== 1)
     if (!task) {
-      throw new DomainError('关联的任务不存在')
+      throw new DomainError('关联的任务不存在', { key: 'errors.relatedTaskNotFound' })
     }
   }
   return [...capsules, buildCapsule(input, now)]

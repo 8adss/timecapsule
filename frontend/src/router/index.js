@@ -1,4 +1,6 @@
+import { watch } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
+import { i18n } from '../i18n'
 
 /** 站点名，用于拼 document.title。 */
 const SITE_NAME = 'TimeCapsule'
@@ -23,7 +25,7 @@ const routes = [
     path: '/',
     name: 'landing',
     component: () => import('../views/LandingView.vue'),
-    meta: { title: '写给未来的自己' }
+    meta: { title: 'route.landing' }
   },
 
   {
@@ -31,10 +33,10 @@ const routes = [
     component: () => import('../layouts/AppShell.vue'),
     children: [
       { path: '', redirect: '/app/tasks' },
-      { path: 'tasks', component: () => import('../views/TaskView.vue'), meta: { title: '任务' } },
-      { path: 'capsules', component: () => import('../views/CapsuleView.vue'), meta: { title: '时间胶囊' } },
-      { path: 'profile', component: () => import('../views/ProfileView.vue'), meta: { title: '我的 / 成就' } },
-      { path: 'settings', component: () => import('../views/SettingsView.vue'), meta: { title: '设置' } }
+      { path: 'tasks', component: () => import('../views/TaskView.vue'), meta: { title: 'route.tasks' } },
+      { path: 'capsules', component: () => import('../views/CapsuleView.vue'), meta: { title: 'route.capsules' } },
+      { path: 'profile', component: () => import('../views/ProfileView.vue'), meta: { title: 'route.profile' } },
+      { path: 'settings', component: () => import('../views/SettingsView.vue'), meta: { title: 'route.settings' } }
     ]
   },
 
@@ -61,10 +63,19 @@ const router = createRouter({
   scrollBehavior: () => ({ top: 0 })
 })
 
-/** 用路由的 meta.title 更新标签页标题，没有声明时退回站点名。 */
-router.afterEach((to) => {
-  const title = to.meta && to.meta.title
-  document.title = title ? `${title} · ${SITE_NAME}` : SITE_NAME
-})
+/** 用路由的 meta.title 更新标签页标题，没有声明时退回站点名。
+ *
+ *  meta.title 里存的是**语言键**而不是文案。路由表在应用启动时就固定了，
+ *  写死中文的话英文用户会一直看到中文标题；存键则可以在渲染时按当前语言取。 */
+function applyTitle(route) {
+  const key = route.meta && route.meta.title
+  document.title = key ? `${i18n.global.t(key)} · ${SITE_NAME}` : SITE_NAME
+}
+
+router.afterEach(applyTitle)
+
+// 切换语言后当前页的标题也要跟着变。afterEach 只在导航时触发，
+// 而语言是可以在设置页原地切换的——不补这一下，标题会一直停在旧语言上。
+watch(i18n.global.locale, () => applyTitle(router.currentRoute.value))
 
 export default router

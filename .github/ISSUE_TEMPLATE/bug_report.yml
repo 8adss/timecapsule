@@ -1,0 +1,56 @@
+name: 报告问题
+description: 遇到了 bug 或异常行为
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请尽量填完整，尤其是复现步骤。
+
+        > **数据安全提醒**：本项目的数据只存在你自己的浏览器里，没有服务端副本。
+        > 如果问题可能涉及数据，**请先到「设置 → 备份与恢复」导出一份备份**再继续操作。
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么
+      description: 预期是什么，实际是什么
+      placeholder: |
+        预期：点「完成」后任务变成已完成状态
+        实际：点了没反应，控制台报错
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开 ...
+        2. 点击 ...
+        3. 看到 ...
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: 浏览器与版本
+      placeholder: Chrome 130 / Safari 18 / Edge 130 ...
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: 应用版本
+      description: 在「设置 → 关于」里可以看到
+  - type: textarea
+    id: console
+    attributes:
+      label: 控制台报错
+      description: 浏览器开发者工具 Console 面板的内容（如果有）
+      render: shell
+  - type: checkboxes
+    id: data-safety
+    attributes:
+      label: 数据安全确认
+      options:
+        - label: 我已导出备份，或本次问题不涉及数据
+          required: true

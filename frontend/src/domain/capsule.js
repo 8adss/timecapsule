@@ -46,13 +46,15 @@ export function resolveCapsuleToDate(input, now = new Date()) {
  * @throws {DomainError} 内容为空 / 开启时间为空 / 开启时间不在将来
  */
 export function buildCapsule(input, now = new Date()) {
-  const content = requireText(input.content, '给未来的话不能为空')
+  const content = requireText(input.content, '给未来的话不能为空', {
+    key: 'errors.capsuleContentRequired'
+  })
 
   if (!input.toDate) {
-    throw new DomainError('胶囊开启时间不能为空')
+    throw new DomainError('胶囊开启时间不能为空', { key: 'errors.capsuleToDateRequired' })
   }
   if (!isAtOrAfter(input.toDate, nowDateTimeString(now))) {
-    throw new DomainError('胶囊开启时间必须晚于当前时间')
+    throw new DomainError('胶囊开启时间必须晚于当前时间', { key: 'errors.capsuleToDateMustBeFuture' })
   }
 
   const timestamp = nowDateTimeString(now)

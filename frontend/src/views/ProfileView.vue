@@ -1,67 +1,65 @@
 <template>
   <div class="page">
     <div class="page-head">
-      <h1 class="page-title">我的 / 成就</h1>
+      <h1 class="page-title">{{ t('profile.title') }}</h1>
     </div>
 
     <el-card shadow="never" class="profile-card" v-loading="loading">
       <div class="profile-top">
-        <div class="avatar-trigger" title="编辑资料" @click="editVisible = true">
+        <div class="avatar-trigger" :title="t('profile.edit')" @click="editVisible = true">
           <el-avatar :size="60" :src="userStore.avatarUrl" class="profile-avatar">
             {{ userStore.avatarText }}
           </el-avatar>
-          <span class="avatar-trigger-hint">编辑</span>
+          <span class="avatar-trigger-hint">{{ t('profile.editHint') }}</span>
         </div>
         <div class="profile-main">
           <div class="nickname">{{ userStore.displayName }}</div>
-          <div class="storage-note">
-            数据保存在本机浏览器中，不会上传到任何服务器
-          </div>
+          <div class="storage-note">{{ t('profile.localNote') }}</div>
         </div>
-        <el-button @click="editVisible = true">编辑资料</el-button>
+        <el-button @click="editVisible = true">{{ t('profile.edit') }}</el-button>
       </div>
 
       <div class="stat-grid stats">
         <div class="stat-cell">
           <div class="value">Lv.{{ userStore.growthLevel }}</div>
-          <div class="label">成长等级</div>
+          <div class="label">{{ t('profile.statLevel') }}</div>
         </div>
         <div class="stat-cell">
-          <div class="value">{{ userStore.streakDays }} 天</div>
-          <div class="label">连续打卡</div>
+          <div class="value">{{ t('profile.streakUnit', { n: userStore.streakDays }) }}</div>
+          <div class="label">{{ t('profile.statStreak') }}</div>
         </div>
         <div class="stat-cell">
           <div class="value">{{ doneCount }}</div>
-          <div class="label">已完成任务</div>
+          <div class="label">{{ t('profile.statDoneTasks') }}</div>
         </div>
         <div class="stat-cell">
           <div class="value">{{ capsuleCount }}</div>
-          <div class="label">已开启胶囊</div>
+          <div class="label">{{ t('profile.statOpenedCapsules') }}</div>
         </div>
       </div>
 
       <div class="level-tip">
-        每完成 5 个任务升 1 级，当前进度 {{ doneCount % 5 }}/5
+        {{ t('profile.levelTip', { done: doneCount % 5 }) }}
         <el-progress :percentage="(doneCount % 5) * 20" :show-text="false" :stroke-width="6" />
       </div>
     </el-card>
 
-    <h3>成就徽章（{{ achievements.length }}）</h3>
-    <el-empty v-if="achievements.length === 0" description="完成更多任务，解锁第一个徽章吧" />
+    <h3>{{ t('profile.badges', { n: achievements.length }) }}</h3>
+    <el-empty v-if="achievements.length === 0" :description="t('profile.noBadges')" />
     <div v-else class="badge-list">
       <div v-for="a in achievements" :key="a.id" class="badge" :style="{ borderColor: meta(a.type).color }">
         <span class="badge-icon">{{ meta(a.type).icon }}</span>
         <div>
-          <div class="badge-title">{{ a.type }} × {{ a.value }}</div>
-          <div class="badge-time">{{ formatDateTime(a.unlockedAt) }} 解锁</div>
+          <div class="badge-title">{{ achievementLabel(a.type) }} × {{ a.value }}</div>
+          <div class="badge-time">{{ t('profile.unlockedAt', { time: formatDateTime(a.unlockedAt) }) }}</div>
         </div>
       </div>
     </div>
 
     <!-- 编辑资料：头像上传 + 昵称 -->
-    <el-dialog v-model="editVisible" title="编辑资料" width="460px">
+    <el-dialog v-model="editVisible" :title="t('profile.edit')" width="460px">
       <el-form label-width="70px">
-        <el-form-item label="头像">
+        <el-form-item :label="t('profile.avatarLabel')">
           <el-upload
             class="avatar-uploader"
             :show-file-list="false"
@@ -73,21 +71,20 @@
               <el-avatar :size="84" :src="userStore.avatarUrl">
                 {{ userStore.avatarText }}
               </el-avatar>
-              <div class="avatar-edit-mask">{{ uploading ? '处理中…' : '更换头像' }}</div>
+              <div class="avatar-edit-mask">{{ uploading ? t('profile.uploading') : t('profile.changeAvatar') }}</div>
             </div>
           </el-upload>
-          <div class="form-hint">
-            支持 JPG / PNG / WebP / GIF。选好图片即保存，不需要再点按钮。
-            图片会在本机压缩后存入浏览器，不会上传到任何地方。
-          </div>
+          <div class="form-hint">{{ t('profile.avatarHint') }}</div>
         </el-form-item>
-        <el-form-item label="昵称">
-          <el-input v-model="nicknameDraft" maxlength="50" placeholder="给自己起个名字" />
+        <el-form-item :label="t('profile.nicknameLabel')">
+          <el-input v-model="nicknameDraft" maxlength="50" :placeholder="t('profile.nicknamePlaceholder')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="editVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveNickname">保存昵称</el-button>
+        <el-button @click="editVisible = false">{{ t('profile.cancel') }}</el-button>
+        <el-button type="primary" :loading="saving" @click="saveNickname">
+          {{ t('profile.saveNickname') }}
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -95,6 +92,7 @@
 
 <script setup>
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 // ElMessage 由 unplugin-auto-import 自动引入，见 vite.config.js
 import { listAchievements } from '../api/achievement'
 import { listOpenedCapsules } from '../api/capsule'
@@ -103,6 +101,7 @@ import { useUserStore } from '../stores/user'
 import { formatDateTime } from '../utils/date'
 import { ALLOWED_AVATAR_TYPES } from '../utils/image'
 
+const { t } = useI18n()
 const userStore = useUserStore()
 
 /** 源文件大小上限。超过它浏览器压缩会明显卡顿，体验上不如直接拒绝。 */
@@ -117,12 +116,28 @@ const uploading = ref(false)
 const editVisible = ref(false)
 const nicknameDraft = ref('')
 
+/**
+ * 成就类型 → 图标与颜色。
+ *
+ * 键是**存储值**：成就的 `type` 字段就是这三个中文词，它写在 IndexedDB 里、
+ * 也随导出备份流转，翻译它会直接破坏已有数据和旧备份。
+ * 需要翻译的是显示出来的名字，见下面的 ACHIEVEMENT_KEY 映射。
+ */
 const META = {
   任务完成: { icon: '✅', color: '#8fa97e' },
   胶囊开启: { icon: '🕐', color: '#d9a05b' },
   连续打卡: { icon: '🔥', color: '#c97c6a' }
 }
+
+/** 存储值 → 语言键。分开写是为了让语言键里不出现中文，便于检索与校对。 */
+const ACHIEVEMENT_KEY = {
+  任务完成: 'taskDone',
+  胶囊开启: 'capsuleOpened',
+  连续打卡: 'streak'
+}
+
 const meta = (type) => META[type] || { icon: '🏅', color: '#a99a8b' }
+const achievementLabel = (type) => t(`achievementType.${ACHIEVEMENT_KEY[type] ?? 'unknown'}`)
 
 const load = async () => {
   loading.value = true
@@ -146,7 +161,7 @@ const load = async () => {
 
 const saveNickname = async () => {
   if (!nicknameDraft.value.trim()) {
-    ElMessage.warning('昵称不能为空')
+    ElMessage.warning(t('profile.errNicknameEmpty'))
     return
   }
   saving.value = true
@@ -155,7 +170,7 @@ const saveNickname = async () => {
       nickname: nicknameDraft.value.trim(),
       avatarUrl: userStore.avatarUrl
     })
-    ElMessage.success('昵称已更新')
+    ElMessage.success(t('profile.msgNicknameSaved'))
     editVisible.value = false
   } catch (e) {
     /* 已提示 */
@@ -173,11 +188,11 @@ const saveNickname = async () => {
  */
 const beforeAvatarUpload = (file) => {
   if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
-    ElMessage.error('只支持 JPG / PNG / WebP / GIF 格式的图片')
+    ElMessage.error(t('profile.errAvatarType'))
     return false
   }
   if (file.size > MAX_SOURCE_BYTES) {
-    ElMessage.error('图片不能超过 20 MB')
+    ElMessage.error(t('profile.errAvatarSize'))
     return false
   }
   return true
@@ -188,7 +203,7 @@ const doUploadAvatar = async ({ file }) => {
   uploading.value = true
   try {
     await userStore.changeAvatar(file)
-    ElMessage.success('头像已更新')
+    ElMessage.success(t('profile.msgAvatarSaved'))
   } catch (e) {
     /* 已提示 */
   } finally {

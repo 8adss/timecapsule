@@ -39,7 +39,7 @@ export function buildTask(input, now = new Date()) {
   const timestamp = nowDateTimeString(now)
   return {
     id: newId(),
-    title: requireText(input.title, '请填写任务名称'),
+    title: requireText(input.title, '请填写任务名称', { key: 'errors.taskNameRequired' }),
     category: typeof input.category === 'string' && input.category.trim() !== ''
       ? input.category.trim()
       : DEFAULT_TASK_CATEGORY,
@@ -129,7 +129,7 @@ export function completeTask(task, now = new Date()) {
  */
 export function abandonTask(task, now = new Date()) {
   if (task.status === TASK_STATUS.DONE) {
-    throw new DomainError('已完成的任务不能标记为放弃')
+    throw new DomainError('已完成的任务不能标记为放弃', { key: 'errors.cannotAbandonDoneTask' })
   }
   return {
     ...task,

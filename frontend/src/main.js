@@ -13,6 +13,7 @@ import 'element-plus/dist/index.css'
 import './styles/theme.css'
 import App from './App.vue'
 import router from './router'
+import { i18n } from './i18n'
 import { useUserStore } from './stores/user'
 import { initStorage, ensureMeta } from './storage'
 import { runMaintenance, startMaintenanceLoop } from './repository/maintenance'
@@ -20,6 +21,7 @@ import { runMaintenance, startMaintenanceLoop } from './repository/maintenance'
 const app = createApp(App)
 app.use(createPinia())
 app.use(router)
+app.use(i18n)
 
 /*
  * 这里不再有 `app.use(ElementPlus)`。

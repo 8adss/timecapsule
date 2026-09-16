@@ -1,53 +1,60 @@
 <template>
   <div class="landing">
-    <!-- 顶栏：字标 + 锚点导航 + 进入应用 -->
+    <!-- 顶栏：字标 + 锚点导航 + 语言切换 + 进入应用 -->
     <header class="topbar">
       <div class="wrap topbar-inner">
         <router-link to="/" class="brand-script">TimeCapsule</router-link>
         <nav class="topnav">
-          <a href="#features">功能</a>
-          <a href="#data">数据</a>
-          <a :href="repoUrl" target="_blank" rel="noopener noreferrer">源码</a>
+          <a href="#features">{{ t('landing.navFeatures') }}</a>
+          <a href="#data">{{ t('landing.navData') }}</a>
+          <a :href="repoUrl" target="_blank" rel="noopener noreferrer">{{ t('landing.navSource') }}</a>
         </nav>
-        <router-link to="/app/tasks" class="btn btn-primary">进入应用</router-link>
+        <div class="lang">
+          <button
+            v-for="item in SUPPORTED_LOCALES"
+            :key="item.value"
+            :class="['lang-btn', { active: item.value === currentLocale }]"
+            @click="changeLocale(item.value)"
+          >
+            {{ item.label }}
+          </button>
+        </div>
+        <router-link to="/app/tasks" class="btn btn-primary">{{ t('landing.enter') }}</router-link>
       </div>
     </header>
 
     <!-- 主视觉 -->
     <section class="hero">
       <div class="wrap hero-inner">
-        <p class="eyebrow">本地优先 · 无需注册 · 完全离线</p>
+        <p class="eyebrow">{{ t('landing.eyebrow') }}</p>
         <h1 class="hero-title">
-          写给未来的自己<br />
-          <span class="accent">然后等着收信</span>
+          {{ t('landing.heroLine1') }}<br />
+          <span class="accent">{{ t('landing.heroLine2') }}</span>
         </h1>
-        <p class="hero-sub">
-          把此刻的决心封成一枚时间胶囊，定在未来某一天开启。
-          在那之前，用任务清单一天天兑现它。
-        </p>
+        <p class="hero-sub">{{ t('landing.heroSub') }}</p>
         <div class="hero-actions">
-          <router-link to="/app/tasks" class="btn btn-primary btn-lg">开始使用</router-link>
+          <router-link to="/app/tasks" class="btn btn-primary btn-lg">{{ t('landing.start') }}</router-link>
           <a :href="repoUrl" target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-lg">
-            查看源码
+            {{ t('landing.viewSource') }}
           </a>
         </div>
-        <p class="hero-note">打开即用，数据存在你自己的浏览器里，不会上传到任何服务器。</p>
+        <p class="hero-note">{{ t('landing.heroNote') }}</p>
       </div>
     </section>
 
     <!-- 功能 -->
     <section id="features" class="section">
       <div class="wrap">
-        <h2 class="section-title">三件事，构成一个闭环</h2>
-        <p class="section-sub">立志、执行、回看——时间胶囊把这三步串在一起。</p>
+        <h2 class="section-title">{{ t('landing.featuresTitle') }}</h2>
+        <p class="section-sub">{{ t('landing.featuresSub') }}</p>
 
         <div class="cards">
-          <article v-for="item in features" :key="item.title" class="card">
+          <article v-for="item in features" :key="item.icon" class="card">
             <span class="card-icon">
               <NavIcon :name="item.icon" />
             </span>
-            <h3 class="card-title">{{ item.title }}</h3>
-            <p class="card-desc">{{ item.desc }}</p>
+            <h3 class="card-title">{{ t(item.titleKey) }}</h3>
+            <p class="card-desc">{{ t(item.descKey) }}</p>
           </article>
         </div>
       </div>
@@ -57,25 +64,16 @@
     <section id="data" class="section section-alt">
       <div class="wrap data-inner">
         <div class="data-copy">
-          <h2 class="section-title">你的记录，只属于你</h2>
-          <p class="section-sub">
-            没有账号、没有服务器、没有埋点。所有内容都存在这台设备的浏览器里，
-            断网也能照常用。
-          </p>
+          <h2 class="section-title">{{ t('landing.dataTitle') }}</h2>
+          <p class="section-sub">{{ t('landing.dataSub') }}</p>
           <ul class="data-list">
-            <li>数据存在浏览器的 IndexedDB 中，不经过网络</li>
-            <li>可随时导出成一个 JSON 文件备份</li>
-            <li>换设备或重装浏览器后，导入该文件即可完整恢复</li>
-            <li>开源可审查，代码里没有任何上报逻辑</li>
+            <li v-for="n in 4" :key="n">{{ t(`landing.dataPoint${n}`) }}</li>
           </ul>
         </div>
         <aside class="data-aside">
           <div class="data-note">
-            <div class="data-note-title">需要注意</div>
-            <p>
-              数据只在这一台设备上。清除浏览器数据、使用无痕模式、
-              或更换设备都会让它消失——所以请记得定期导出备份。
-            </p>
+            <div class="data-note-title">{{ t('landing.dataNoteTitle') }}</div>
+            <p>{{ t('landing.dataNote') }}</p>
           </div>
         </aside>
       </div>
@@ -84,8 +82,8 @@
     <!-- 结尾 -->
     <section class="section cta-section">
       <div class="wrap cta-inner">
-        <h2 class="cta-title">现在就写给三个月后的自己</h2>
-        <router-link to="/app/tasks" class="btn btn-primary btn-lg">开始使用</router-link>
+        <h2 class="cta-title">{{ t('landing.ctaTitle') }}</h2>
+        <router-link to="/app/tasks" class="btn btn-primary btn-lg">{{ t('landing.start') }}</router-link>
       </div>
     </section>
 
@@ -93,7 +91,7 @@
       <div class="wrap footer-inner">
         <span class="footer-brand">TimeCapsule</span>
         <span class="footer-sep">·</span>
-        <span>本地优先的时间胶囊与自律记事本</span>
+        <span>{{ t('landing.footerDesc') }}</span>
         <span class="footer-spacer" />
         <a :href="repoUrl" target="_blank" rel="noopener noreferrer">GitHub</a>
       </div>
@@ -102,32 +100,36 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import NavIcon from '../components/NavIcon.vue'
+import { SUPPORTED_LOCALES, getLocale, setLocale } from '../i18n'
+
+const { t } = useI18n()
 
 /**
- * 仓库地址。
- *
- * 目前是占位——仓库还没有托管到 GitHub，M5 发布时改成真实地址即可。
- * 用常量集中一处，避免散落在模板里改漏。
+ * 仓库地址。落地页顶栏与页脚的「源码」链接都指向它。
+ * 集中成一个常量，避免散落在模板里改漏。
  */
-const repoUrl = 'https://github.com/'
+const repoUrl = 'https://github.com/8adss/timecapsule'
 
+const currentLocale = ref(getLocale())
+
+const changeLocale = (value) => {
+  setLocale(value)
+  currentLocale.value = value
+}
+
+/**
+ * 功能卡片。
+ *
+ * 只存 i18n 的键，不存文案：数组在组件初始化时就固定了，
+ * 存中文的话切换语言时这三张卡片不会跟着变。
+ */
 const features = [
-  {
-    icon: 'capsule',
-    title: '封存时间胶囊',
-    desc: '写下此刻想对未来说的话，指定一个开启日期。到期后它会自动打开——不是提醒你去打开，而是真的到了时候自己出现。'
-  },
-  {
-    icon: 'task',
-    title: '用任务兑现它',
-    desc: '把决心拆成可执行的任务，完成即打卡。连续打卡天数与成长等级由完成记录自动算出，不需要手动维护。'
-  },
-  {
-    icon: 'achievement',
-    title: '回看走过的路',
-    desc: '完成 1、3、5、10… 个任务，开启第 1、2、3 枚胶囊，连续打卡 7 天——每个里程碑都会留下一枚徽章。'
-  }
+  { icon: 'capsule', titleKey: 'landing.featureCapsuleTitle', descKey: 'landing.featureCapsuleDesc' },
+  { icon: 'task', titleKey: 'landing.featureTaskTitle', descKey: 'landing.featureTaskDesc' },
+  { icon: 'achievement', titleKey: 'landing.featureAchievementTitle', descKey: 'landing.featureAchievementDesc' }
 ]
 </script>
 
@@ -184,6 +186,33 @@ const features = [
 }
 .topnav a:hover {
   color: var(--mt-text);
+}
+
+/* ---------- 语言切换 ---------- */
+.lang {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius);
+  background: var(--mt-surface-alt);
+}
+.lang-btn {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--mt-text-muted);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.lang-btn:hover {
+  color: var(--mt-text);
+}
+.lang-btn.active {
+  background: var(--mt-surface);
+  color: var(--mt-text);
+  font-weight: 500;
 }
 
 /* ---------- 按钮 ---------- */
@@ -421,7 +450,12 @@ const features = [
   color: var(--mt-primary-deep);
 }
 
-/* 窄屏：数据说明从两栏变一栏，主标题收小 */
+/* 窄屏：数据说明从两栏变一栏，主标题收小，锚点导航让位给语言切换与主按钮 */
+@media (max-width: 860px) {
+  .topnav {
+    display: none;
+  }
+}
 @media (max-width: 760px) {
   .hero {
     padding: 60px 0 52px;
@@ -432,9 +466,6 @@ const features = [
   .data-inner {
     grid-template-columns: 1fr;
     gap: var(--sp-5);
-  }
-  .topnav {
-    display: none;
   }
   .section {
     padding: 56px 0;
