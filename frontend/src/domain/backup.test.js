@@ -47,6 +47,19 @@ const achievement = (over = {}) => ({
   ...over
 })
 
+/** 造一篇合法的知识库文档。 */
+const doc = (over = {}) => ({
+  id: 'k1',
+  title: '关于我',
+  content: '我是一名后端工程师',
+  sourceType: 'PASTE',
+  originName: null,
+  deleted: 0,
+  createdAt: '2026-09-15 10:00:00',
+  updatedAt: '2026-09-15 10:00:00',
+  ...over
+})
+
 /** 组装一份结构完整的备份文件。 */
 const backup = (data = {}) => ({
   format: BACKUP_FORMAT,
@@ -352,5 +365,87 @@ describe('replaceData', () => {
     const { summary } = replaceData({ tasks: [task(), task({ id: 't2' })], capsules: [capsule()] })
     expect(summary.tasksAdded).toBe(2)
     expect(summary.capsulesAdded).toBe(1)
+  })
+})
+
+describe('知识库（后加的集合）', () => {
+  it('导出时带上知识库与条数', () => {
+    const result = buildBackup({ knowledge: [doc()] })
+    expect(result.data.knowledge).toHaveLength(1)
+    expect(result.counts.knowledge).toBe(1)
+  })
+
+  it('缺失时补成空数组，而不是 undefined', () => {
+    expect(buildBackup({}).data.knowledge).toEqual([])
+    expect(buildBackup({}).counts.knowledge).toBe(0)
+  })
+
+  it('老备份（data 里没有 knowledge）照样能导入', () => {
+    // 这条是整个设计的关键：知识库上线**之前**导出的备份文件不能被判成损坏。
+    // 新增一个集合对旧文件是向后兼容的，所以 BACKUP_FORMAT_VERSION 不必升。
+    const { data } = validateBackup(backup())
+    expect(data.knowledge).toEqual([])
+  })
+
+  it('接受一篇合法文档', () => {
+    const { data } = validateBackup(backup({ knowledge: [doc()] }))
+    expect(data.knowledge[0].title).toBe('关于我')
+  })
+
+  it('拒绝非法的来源取值', () => {
+    expect(() => validateBackup(backup({ knowledge: [doc({ sourceType: 'PDF' })] })))
+      .toThrow('data.knowledge[0].sourceType')
+  })
+
+  it('拒绝缺少创建时间', () => {
+    expect(() => validateBackup(backup({ knowledge: [doc({ createdAt: null })] })))
+      .toThrow('data.knowledge[0].createdAt')
+  })
+
+  it('拒绝超长标题', () => {
+    expect(() => validateBackup(backup({ knowledge: [doc({ title: 'x'.repeat(201) })] })))
+      .toThrow('超出上限')
+  })
+
+  it('派生字段（字数与摘要）不进导入结果', () => {
+    // 本地实现不存这两个值——它们是正文的函数。旧文件里夹带也不该被接纳，
+    // 否则会出现「正文 100 字、字数写着 999」这种自相矛盾的数据。
+    const { data } = validateBackup(backup({ knowledge: [doc({ charCount: 999, preview: '假的' })] }))
+    expect(data.knowledge[0]).not.toHaveProperty('charCount')
+    expect(data.knowledge[0]).not.toHaveProperty('preview')
+  })
+
+  it('拒绝重复的文档 id', () => {
+    expect(() => validateBackup(backup({ knowledge: [doc(), doc()] })))
+      .toThrow('与前面的条目重复')
+  })
+
+  it('合并：新增本地没有的文档', () => {
+    const { data, summary } = mergeData({ knowledge: [] }, { knowledge: [doc()] })
+    expect(data.knowledge).toHaveLength(1)
+    expect(summary.knowledgeAdded).toBe(1)
+  })
+
+  it('合并：同 id 取 updatedAt 较新的那份', () => {
+    const mine = doc({ title: '旧标题' })
+    const theirs = doc({ title: '新标题', updatedAt: '2026-12-01 00:00:00' })
+    expect(mergeData({ knowledge: [mine] }, { knowledge: [theirs] }).data.knowledge[0].title)
+      .toBe('新标题')
+  })
+
+  it('合并：本机删掉的文档不会被旧备份复活', () => {
+    // 这就是用逻辑删除而不是直接从数组里抹掉的原因：
+    // 墓碑的 updatedAt 更新，合并时胜出，用户不会看到「删掉的资料又回来了」。
+    const tombstone = doc({ deleted: 1, updatedAt: '2026-12-01 00:00:00' })
+    const alive = doc({ updatedAt: '2026-09-15 10:00:00' })
+    const { data } = mergeData({ knowledge: [tombstone] }, { knowledge: [alive] })
+    expect(data.knowledge[0].deleted).toBe(1)
+  })
+
+  it('替换：带上导入的文档，缺失时清空', () => {
+    expect(replaceData({ knowledge: [doc()] }).data.knowledge).toHaveLength(1)
+    expect(replaceData({ knowledge: [doc()] }).summary.knowledgeAdded).toBe(1)
+    // 「替换」的语义是导入什么就是什么，与其它集合一致
+    expect(replaceData({}).data.knowledge).toEqual([])
   })
 })

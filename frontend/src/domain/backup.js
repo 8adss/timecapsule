@@ -21,6 +21,8 @@
  *    刻意排除 `data:image/svg+xml`：SVG 可以内嵌脚本。
  */
 
+import { KNOWLEDGE_LIMITS, SOURCE_TYPE } from './knowledge.js'
+
 /** 备份文件的标识与版本。 */
 export const BACKUP_FORMAT = 'timecapsule-backup'
 export const BACKUP_FORMAT_VERSION = 1
@@ -42,7 +44,11 @@ const LIMITS = Object.freeze({
   avatarUrl: 1_000_000,
   url: 2_048,
   milestoneValue: 1_000_000,
-  settingsKeys: 100
+  settingsKeys: 100,
+  // 知识库文档。数字与 domain/knowledge.js 共用同一份，不在这里重写一遍——
+  // 两边各写一遍迟早会漂移，届时会出现「界面存得进去、备份导不回来」这种最难查的问题。
+  docTitle: KNOWLEDGE_LIMITS.title,
+  docContent: KNOWLEDGE_LIMITS.content
 })
 
 const DATE_TIME_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
@@ -58,6 +64,9 @@ const ACHIEVEMENT_TYPES = Object.freeze(['任务完成', '胶囊开启', '连续
 /** 任务状态与胶囊状态的合法取值。 */
 const TASK_STATUSES = Object.freeze([0, 1, 2, 3])
 const CAPSULE_STATUSES = Object.freeze([0, 1])
+
+/** 知识库文档的合法来源。取值与 domain/knowledge.js 的 SOURCE_TYPE 对应。 */
+const KNOWLEDGE_SOURCES = Object.freeze([SOURCE_TYPE.FILE, SOURCE_TYPE.PASTE])
 
 /** 默认任务分类，与 domain/constants.js 的 DEFAULT_TASK_CATEGORY 一致。 */
 const DEFAULT_CATEGORY = '习惯'
@@ -235,6 +244,31 @@ function sanitizeAchievement(raw, index, errors) {
   }
 }
 
+/**
+ * 清洗一篇知识库文档。
+ *
+ * 只校验**落盘的字段**：`charCount` 与 `preview` 是正文的派生值，本地实现
+ * 根本不存它们（见 domain/knowledge.js 顶部第 1 条），因此这里也不接受——
+ * 旧备份里若夹带了这两个字段，会被直接忽略，不会污染导入结果。
+ */
+function sanitizeKnowledge(raw, index, errors) {
+  const path = `data.knowledge[${index}]`
+  if (!isPlainObject(raw)) {
+    errors.push(`${path} 不是对象`)
+    return null
+  }
+  return {
+    id: checkId(raw.id, `${path}.id`, errors),
+    title: checkString(raw.title, LIMITS.docTitle, `${path}.title`, errors),
+    content: checkString(raw.content, LIMITS.docContent, `${path}.content`, errors),
+    sourceType: checkEnum(raw.sourceType, KNOWLEDGE_SOURCES, `${path}.sourceType`, errors),
+    originName: checkString(raw.originName, LIMITS.docTitle, `${path}.originName`, errors, { optional: true }),
+    deleted: checkFlag(raw.deleted, `${path}.deleted`, errors),
+    createdAt: checkDateTime(raw.createdAt, `${path}.createdAt`, errors, { optional: false }),
+    updatedAt: checkDateTime(raw.updatedAt, `${path}.updatedAt`, errors, { optional: false })
+  }
+}
+
 function sanitizeProfile(raw, errors) {
   const path = 'data.profile'
   if (raw === null || raw === undefined) return null
@@ -367,7 +401,11 @@ export function validateBackup(raw) {
     tasks: sanitizeCollection(raw.data.tasks, 'tasks', sanitizeTask, errors),
     capsules: sanitizeCollection(raw.data.capsules, 'capsules', sanitizeCapsule, errors),
     achievements: sanitizeCollection(raw.data.achievements, 'achievements', sanitizeAchievement, errors),
-    settings: sanitizeSettings(raw.data.settings, errors)
+    settings: sanitizeSettings(raw.data.settings, errors),
+    // 知识库是后加的集合。老备份里没有这个字段，而 sanitizeCollection 对
+    // undefined 返回空数组，所以**早期导出的备份照样能导入**——
+    // 新增一个集合对旧文件是向后兼容的，不需要升 BACKUP_FORMAT_VERSION。
+    knowledge: sanitizeCollection(raw.data.knowledge, 'knowledge', sanitizeKnowledge, errors)
   }
 
   if (errors.length > 0) {
@@ -397,12 +435,14 @@ export function buildBackup(data, now = new Date()) {
       tasks: data.tasks ?? [],
       capsules: data.capsules ?? [],
       achievements: data.achievements ?? [],
-      settings: data.settings ?? {}
+      settings: data.settings ?? {},
+      knowledge: data.knowledge ?? []
     },
     counts: {
       tasks: (data.tasks ?? []).length,
       capsules: (data.capsules ?? []).length,
-      achievements: (data.achievements ?? []).length
+      achievements: (data.achievements ?? []).length,
+      knowledge: (data.knowledge ?? []).length
     }
   }
 }
@@ -471,6 +511,10 @@ export function mergeData(current, incoming) {
   const tasks = mergeById(current.tasks ?? [], incoming.tasks ?? [])
   const capsules = mergeById(current.capsules ?? [], incoming.capsules ?? [])
   const achievements = mergeAchievements(current.achievements ?? [], incoming.achievements ?? [])
+  // 知识库按 id 合并，与任务同理。文档用的是**逻辑删除**，
+  // 所以「本机删了、备份里还在」时，合并结果以 updatedAt 较新的那份为准——
+  // 墓碑比旧内容新，删除状态就会被保留下来，文档不会复活。
+  const knowledge = mergeById(current.knowledge ?? [], incoming.knowledge ?? [])
 
   const profile = pickNewer(current.profile, incoming.profile)
 
@@ -481,14 +525,17 @@ export function mergeData(current, incoming) {
       capsules: capsules.list,
       achievements: achievements.list,
       // 设置项以导入的为准：它是使用偏好，没有「更新」的时间戳可比
-      settings: { ...(current.settings ?? {}), ...(incoming.settings ?? {}) }
+      settings: { ...(current.settings ?? {}), ...(incoming.settings ?? {}) },
+      knowledge: knowledge.list
     },
     summary: {
       tasksAdded: tasks.added,
       tasksUpdated: tasks.updated,
       capsulesAdded: capsules.added,
       capsulesUpdated: capsules.updated,
-      achievementsAdded: achievements.added
+      achievementsAdded: achievements.added,
+      knowledgeAdded: knowledge.added,
+      knowledgeUpdated: knowledge.updated
     }
   }
 }
@@ -510,14 +557,17 @@ export function replaceData(incoming) {
       tasks: incoming.tasks ?? [],
       capsules: incoming.capsules ?? [],
       achievements: incoming.achievements ?? [],
-      settings: incoming.settings ?? {}
+      settings: incoming.settings ?? {},
+      knowledge: incoming.knowledge ?? []
     },
     summary: {
       tasksAdded: (incoming.tasks ?? []).length,
       tasksUpdated: 0,
       capsulesAdded: (incoming.capsules ?? []).length,
       capsulesUpdated: 0,
-      achievementsAdded: (incoming.achievements ?? []).length
+      achievementsAdded: (incoming.achievements ?? []).length,
+      knowledgeAdded: (incoming.knowledge ?? []).length,
+      knowledgeUpdated: 0
     }
   }
 }

@@ -13,6 +13,7 @@ import { setAdapter } from '../storage/index.js'
 import { createMemoryAdapter } from '../storage/adapters/memory.js'
 import * as taskRepo from './taskRepo.js'
 import * as capsuleRepo from './capsuleRepo.js'
+import * as knowledgeRepo from './knowledgeRepo.js'
 import * as achievementRepo from './achievementRepo.js'
 import * as profileRepo from './profileRepo.js'
 import { runMaintenance } from './maintenance.js'
@@ -257,5 +258,84 @@ describe('本机档案', () => {
     const updated = await profileRepo.setAvatar('data:image/webp;base64,AAAA')
     expect(updated.avatarUrl).toBe('data:image/webp;base64,AAAA')
     expect((await profileRepo.get()).avatarUrl).toBe('data:image/webp;base64,AAAA')
+  })
+})
+
+describe('知识库的增删改查', () => {
+  // 注意：这里不断言「两篇的先后顺序」——同一秒内创建的两篇 createdAt 完全相同，
+  // 谁在前取决于排序的稳定性，那样的断言会随实现细节漂移。
+  // 排序规则本身由 domain/knowledge.test.js 用不同的时间戳覆盖。
+  it('导入后能在列表里查到', async () => {
+    await knowledgeRepo.create({ title: '第一篇', content: '正文一' })
+    await knowledgeRepo.create({ title: '第二篇', content: '正文二' })
+    const docs = await knowledgeRepo.list()
+    expect(docs).toHaveLength(2)
+    expect(docs.map((item) => item.title)).toContain('第一篇')
+    expect(docs.map((item) => item.title)).toContain('第二篇')
+  })
+
+  it('标题为空或正文为空时拒绝导入', async () => {
+    await expect(knowledgeRepo.create({ title: '', content: '正文' })).rejects.toThrow('请填写标题')
+    await expect(knowledgeRepo.create({ title: '标题', content: '   ' })).rejects.toThrow('正文不能为空')
+  })
+
+  it('来源与原文件名被记下来', async () => {
+    const item = await knowledgeRepo.create({
+      title: '日记',
+      content: '今天……',
+      sourceType: 'FILE',
+      originName: '日记.md'
+    })
+    expect(item.sourceType).toBe('FILE')
+    expect(item.originName).toBe('日记.md')
+  })
+
+  it('修改标题与正文后列表里是新值', async () => {
+    const created = await knowledgeRepo.create({ title: '旧标题', content: '旧正文' })
+    const updated = await knowledgeRepo.update(created.id, { title: '新标题', content: '新正文' })
+    expect(updated.title).toBe('新标题')
+    expect((await knowledgeRepo.list())[0].content).toBe('新正文')
+  })
+
+  it('正文被清空时拒绝保存，旧正文原样还在', async () => {
+    const created = await knowledgeRepo.create({ title: '标题', content: '不能丢的正文' })
+    await expect(knowledgeRepo.update(created.id, { content: '' })).rejects.toThrow('正文不能为空')
+    expect((await knowledgeRepo.list())[0].content).toBe('不能丢的正文')
+  })
+
+  it('操作不存在的文档抛 404', async () => {
+    await expect(knowledgeRepo.update('nope', { title: 'x' })).rejects.toThrow('文档不存在')
+    await expect(knowledgeRepo.remove('nope')).rejects.toThrow('文档不存在')
+  })
+
+  it('删除是逻辑删除：列表里不再出现，但记录还在存储里', async () => {
+    const created = await knowledgeRepo.create({ title: '晨间日记', content: '正文' })
+    await knowledgeRepo.remove(created.id)
+    expect(await knowledgeRepo.list()).toHaveLength(0)
+
+    const raw = await knowledgeRepo.loadDocs()
+    expect(raw).toHaveLength(1)
+    expect(raw[0].deleted).toBe(1)
+  })
+
+  it('批量删除返回实际删掉的条数', async () => {
+    const a = await knowledgeRepo.create({ title: 'A', content: '1' })
+    const b = await knowledgeRepo.create({ title: 'B', content: '2' })
+    await knowledgeRepo.create({ title: 'C', content: '3' })
+    expect(await knowledgeRepo.removeMany([a.id, b.id])).toBe(2)
+    expect((await knowledgeRepo.list()).map((item) => item.title)).toEqual(['C'])
+  })
+
+  it('批量删除里夹着无效 id 时不报错，也不算进条数', async () => {
+    const a = await knowledgeRepo.create({ title: 'A', content: '1' })
+    expect(await knowledgeRepo.removeMany([a.id, 'nope'])).toBe(1)
+    expect(await knowledgeRepo.removeMany([])).toBe(0)
+    expect(await knowledgeRepo.removeMany(null)).toBe(0)
+  })
+
+  it('对同一批重复批量删除不会重复计数', async () => {
+    const a = await knowledgeRepo.create({ title: 'A', content: '1' })
+    expect(await knowledgeRepo.removeMany([a.id])).toBe(1)
+    expect(await knowledgeRepo.removeMany([a.id])).toBe(0)
   })
 })

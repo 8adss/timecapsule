@@ -18,6 +18,7 @@ Seal a decision you're making today into a **time capsule** and set a date for i
 | --- | --- |
 | **Time capsules** | Write a message to your future self and pick an opening date. When the date arrives it **opens by itself** — not a reminder to go click something, but the letter actually appearing |
 | **Task list** | Create, edit, and abandon tasks organised by category and due date. Overdue tasks are flagged automatically |
+| **Knowledge base** | Import what you've written — self-introductions, journals, notes — and edit, search, or sort it. It's the raw material for the planned "past self" persona; for now it is a purely local document store |
 | **Streaks** | Recomputed from your completion history, so there's nothing to maintain. Your streak doesn't reset just because you haven't finished anything *yet today* |
 | **Levels** | One level per five completed tasks, also derived from your history |
 | **Achievements** | Milestones at 1/3/5/10/20/50 tasks, 1/2/3/5/10 capsules, and 2/3/7/14/30/100 streak days |
@@ -99,7 +100,7 @@ No backend, no database, no server-side dependency.
 
 ## Roadmap
 
-- **v2**: bring back the AI features — talking to your past self, a personal knowledge base, persona distillation. The plan is to have **users supply their own API key**, so no key ever has to sit on a server
+- **v2**: bring back the AI features — talking to your past self, and persona distillation fed by the documents in your knowledge base. The plan is to have **users supply their own API key**, so no key ever has to sit on a server
 - **v2**: a WeChat Mini Program client, reusing the same storage adapter interface
 - **Finishing i18n**: the interface and the common validation errors are bilingual. What's left is the per-field diagnostic output from `domain/backup.js` when an import file is malformed (messages like `data.tasks[0].title 应为字符串`), which is still Chinese only. Fixing it means turning the error collection into a structured issue list — see [CONTRIBUTING.md](CONTRIBUTING.md)
 - An external storage adapter (self-hosted server or object storage sync). The contract is defined in `frontend/src/storage/adapters/remote.js`
